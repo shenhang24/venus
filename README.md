@@ -68,6 +68,8 @@ node src/supervisor.mjs
 
 Open `http://127.0.0.1:10001`. Check the port is free; do not terminate another project to claim it. `VENUS_PORT` changes the backend port, but the Windows launcher and read client default to 10001 and must be adjusted correspondingly. Windows users may also run `Start-Venus.cmd`. Run only one writer against a given data directory.
 
+Venus is designed to run as a long-lived local knowledge service, giving your authorized AI tools ongoing access to your personal library. Keep it running while you want connected tools or configured processing workflows to use it. Saved data persists when Venus is stopped, but live access and background processing require the service to be running.
+
 No personal database is shipped. The application creates its own `data/` directory. Import Markdown through the interface; `scripts/import-chatgpt.py` converts an explicitly supplied ChatGPT export, rather than scraping an account. Binary attachments are not fully migrated. This copy does not install daily backup schedules. Use `examples/sample.md` for a synthetic first document.
 
 ### AUTHOR-REPORTED LARGE-LIBRARY EXAMPLE
