@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Venus / 启明星</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js",
+          "three/addons/controls/OrbitControls.js": "/vendor/OrbitControls.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="#"
+        ><span class="logo">V</span
+        ><span>Venus <small>/ 启明星</small></span></a
+      >
+      <nav id="content-tabs">
+        <button data-view="vault" class="active">Vault 原始资料</button
+        ><button data-view="knowledge">知识点</button
+        ><button data-view="skill">技能</button>
+      </nav>
+      <button id="mcp-connect-open" type="button">MCP 连接</button>
+      <button id="file-pane-toggle" title="展开或收起文件列表" aria-label="展开或收起文件列表">文件列表</button>
+      <button
+        id="right-pane-toggle"
+        class="icon-button"
+        aria-label="收起或展开来源侧栏"
+        title="收起或展开来源侧栏"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M9 4v16" />
+        </svg></button
+      ><span id="connection" class="connection">连接中</span
+      ><button id="import-open" class="primary">导入资料</button>
+      <button id="venus-restart" class="lifecycle-button" title="重新加载 Venus 后台">重启 Venus</button>
+      <button id="venus-shutdown" class="lifecycle-button" title="保存已提交内容并关闭 Venus 后台">关闭 Venus</button>
+    </header>
+    <div class="workspace">
+      <aside class="ribbon" aria-label="工作区工具栏">
+        <button
+          id="left-pane-toggle"
+          aria-label="收起或展开文件侧栏"
+          title="收起或展开文件侧栏"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+          </svg></button
+        ><button id="ribbon-search" aria-label="查找资料" title="查找资料">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="10.8" cy="10.8" r="6.7" />
+            <path d="m16 16 4.3 4.3" />
+          </svg></button
+        ><button
+          id="ribbon-import"
+          aria-label="导入 Markdown"
+          title="导入 Markdown"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg></button
+        ><span class="ribbon-spacer"></span
+        ><button
+          id="ribbon-jobs"
+          aria-label="资料处理进度"
+          title="资料处理进度"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M9 4H5v16h14v-4M9 4v4h6V4H9Z" />
+            <path d="m13 14 2 2 5-6" />
+          </svg>
+        </button>
+      </aside>
+      <aside class="sidebar">
+        <div class="workspace-name">
+          <span class="vault-name">Venus</span
+          ><span class="subtle">本机资料库</span>
+        </div>
+        <div class="sidebar-scroll">
+          <div class="section-label">内容目录</div>
+          <button class="side-link" data-view="vault">
+            <span>▤</span> Vault
+            <span id="vault-count" class="count">0</span></button
+          ><button class="side-link" data-view="knowledge">
+            <span>◇</span> 知识点
+            <span id="knowledge-count" class="count">0</span></button
+          ><button class="side-link" data-view="skill">
+            <span>⌘</span> 技能 <span id="skill-count" class="count">0</span>
+          </button>
+          <div id="files-host"></div>
+        </div>
+        <div class="network-navigation">
+          <div class="section-label network-label">工作视图</div>
+          <button class="side-link" data-view="vault-network">
+            <span>⠿</span> Vault 网络</button
+          ><button class="side-link" data-view="knowledge-network">
+            <span>⠿</span> 知识网络</button
+          ><button class="side-link" data-view="skill-network">
+            <span>⠿</span> 技能网络
+          </button>
+        </div>
+        <div class="sidebar-bottom">
+          <div class="section-label">
+            资料处理 <span class="live-dot"></span>
+          </div>
+          <div id="job-summary">等待导入第一份资料</div>
+          <button id="jobs-open" class="text-button">
+            查看自动处理进度 ↗
+          </button>
+          <div class="storage-label">本机保存 · MD 可追溯</div>
+        </div>
+      </aside>
+      <main id="main"></main>
+      <aside id="inspector" class="inspector"></aside>
+    </div>
+    <footer>
+      <span
+        >Vault / 知识点 / 技能
+        <span class="footer-muted">三个并列资料目录</span></span
+      ><span id="footer-status">Venus 0.1 · 本机首版</span>
+    </footer>
+    <dialog id="modal">
+      <form id="modal-form">
+        <div class="dialog-title">
+          <h2 id="modal-title"></h2>
+          <button type="button" id="modal-close" aria-label="关闭">×</button>
+        </div>
+        <div id="modal-body"></div>
+        <div class="dialog-actions">
+          <span id="form-error"></span
+          ><button type="submit" class="primary" id="modal-submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" role="status"></div>
+    <script type="module" src="/app.js?build=mcp-controls-r2"></script>
+  </body>
+</html>

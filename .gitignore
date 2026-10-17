@@ -1,0 +1,13 @@
+node_modules/
+data/
+evidence/
+work/
+.env
+.env.*
+*.log
+__pycache__/
+*.pyc
+
+# Local-only documentation drafts
+/docs/README.zh.private-draft.md
+/README.en.md

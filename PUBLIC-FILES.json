@@ -1,0 +1,444 @@
+{
+  "status": "accepted source snapshot: persistent deep orbits and nine-layer planes",
+  "latestRuntimeFixSynchronized": true,
+  "privateContentScan": {
+    "scope": "75 selected source/document/image files plus the manifest; bounded sensitive patterns, resolved paths, visual image review and PNG metadata chunks",
+    "result": "no undisclosed matches; <YOUR_TUNNEL_ID> is a reviewed documentation placeholder",
+    "completeSecurityAudit": false
+  },
+  "gitInitialized": true,
+  "remoteCreated": true,
+  "approvedScreenshotsIncluded": true,
+  "excluded": [
+    "node_modules/**",
+    "**/__pycache__/**",
+    "data/**",
+    "work/**",
+    "history/**",
+    "evidence/**",
+    "source-exports/**",
+    "docs/README.zh.private-draft.md",
+    "README.en.md",
+    ".git/**",
+    "credentials and private configuration"
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 155,
+      "sha256": "5fa89f88598ed323f70435b7a411c046d84320de44c69cd725ff6cabf3c6cf54"
+    },
+    {
+      "path": "PUBLIC-DOCUMENTS.json",
+      "bytes": 1142,
+      "sha256": "aba570e8d39189908e89a845e9f9df93522b054ec0192c04eeb7e671dd35c1c9"
+    },
+    {
+      "path": "README.md",
+      "bytes": 16413,
+      "sha256": "78bf568516da28dab593368212da7be7aa1c0e815a8887e02a53e270c942bf7e"
+    },
+    {
+      "path": "Start-Venus.cmd",
+      "bytes": 99,
+      "sha256": "d7c44d0199006cca4106c8a1b88d26fe79b6e0e7ba03d95f6ca6a7b8bbd9123b"
+    },
+    {
+      "path": "Start-Venus.ps1",
+      "bytes": 2672,
+      "sha256": "09cac728582251b435f2e69547f268e25cce515289eb96e7a70a1beeb7bbca1e"
+    },
+    {
+      "path": "Window-Venus.ps1",
+      "bytes": 2343,
+      "sha256": "c3baba5bf1526cc76a6264a7bf0193c7efd2eb56e8ffe078ee2b3a43d18a88a4"
+    },
+    {
+      "path": "codex-plugin/bridge.mjs",
+      "bytes": 1566,
+      "sha256": "b61ae6180000e4fc5b8c63a14d899fa01af7b9ef36b050da4c7390b468100b67"
+    },
+    {
+      "path": "codex-plugin/mcp.json",
+      "bytes": 136,
+      "sha256": "4e7e8a27c2947e1e6408e80bca70ee2a823c293f84dcad9dd00a10ac0f0d440c"
+    },
+    {
+      "path": "codex-plugin/mcp.mjs",
+      "bytes": 5291,
+      "sha256": "35d7ee2b3a1d82d419c268bebbee020047ccc687100007da5ff8ba69c3daff1a"
+    },
+    {
+      "path": "codex-plugin/query.mjs",
+      "bytes": 2971,
+      "sha256": "4d2da46527de71ece8f2856df71fa8319c045e01f5be5f92ac52a6a37a62cd70"
+    },
+    {
+      "path": "codex-plugin/readonly-client.mjs",
+      "bytes": 3299,
+      "sha256": "dc38580332418fb3d2cfa3055b73270681d940fdafe3c6aef45d7e1f2fa40446"
+    },
+    {
+      "path": "codex-plugin/readonly-mcp.mjs",
+      "bytes": 3422,
+      "sha256": "758315dafce2a765dcab8bac791a567c410adbf71c43dbb802faf71dc6ef2134"
+    },
+    {
+      "path": "codex-plugin/readonly.mcp.json",
+      "bytes": 187,
+      "sha256": "fee2c907f2000adbb169fbf66a4e1d52790562ee9a7d256c1ebf783405a2f295"
+    },
+    {
+      "path": "docs/CREDITS.md",
+      "bytes": 2349,
+      "sha256": "377a9d2f8094b9d1a6e1cf27340c62e7b6fe046b30afb77536815e50cd43a0ae"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "bytes": 18206,
+      "sha256": "2c71be82da1908da97b8b67df88525ae15d858c45b66b8f41b8f5b9eafee82d7"
+    },
+    {
+      "path": "docs/INTEGRATIONS.md",
+      "bytes": 2555,
+      "sha256": "459f8990212a056be0c35765a68dc7c9eb844abab6f0d88c6d0a3e65c52e2708"
+    },
+    {
+      "path": "docs/LICENSE-STATUS.md",
+      "bytes": 1272,
+      "sha256": "bf20ab8669a058c3547502a7127056865f91002e18e4c88569c02c67ccafaba7"
+    },
+    {
+      "path": "docs/PAGE-TOUR.md",
+      "bytes": 6620,
+      "sha256": "148018ad244aebfb03f5f7f54114cde06fec216dfc753668354f86a747685378"
+    },
+    {
+      "path": "docs/PRIVACY.md",
+      "bytes": 9998,
+      "sha256": "88bbbf1bc4f89d909a872de80db47318ce40d8631fcd6fddd076d848e054c812"
+    },
+    {
+      "path": "docs/RELEASE-REVIEW.md",
+      "bytes": 2846,
+      "sha256": "9a0442cbe3e77aaf77c76ae47e8d15b925563821d091fb493511950168b7a9a1"
+    },
+    {
+      "path": "examples/sample.md",
+      "bytes": 177,
+      "sha256": "71f55c29eab55b110f42907b3aa3bbc2acb47296468b91a864e8442d00498f05"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 1513,
+      "sha256": "24e66c84e1633cb370814ac2ea70ef93a7a5db8d23542250fa0bae7a4b295649"
+    },
+    {
+      "path": "package.json",
+      "bytes": 357,
+      "sha256": "1b5a3c89bb79c38d6d108b7f0c9ba111fe3731350aec04b9946769bd1c521a59"
+    },
+    {
+      "path": "public/app.js",
+      "bytes": 68537,
+      "sha256": "3bb4596f296b8aaf0dd936f30b7cd46669db5937ab1baf05fe6893aa67f1b704"
+    },
+    {
+      "path": "public/graph.js",
+      "bytes": 96811,
+      "sha256": "dc310f6674c313eaf5b239f73ca6a4c2bc62b87c0dfd649eebba7c1b1be4cfe9"
+    },
+    {
+      "path": "public/i18n.js",
+      "bytes": 31901,
+      "sha256": "dc17de77132262cabb5834b0f18bab60d28825af2610b878f350234f56bf86e9"
+    },
+    {
+      "path": "public/index.html",
+      "bytes": 6672,
+      "sha256": "c969eeabaf4684588c71a964fa16f3d979a122b9a2f4228ffca98708cc3af6f4"
+    },
+    {
+      "path": "public/knowledge-view.js",
+      "bytes": 7727,
+      "sha256": "f9d322308fee5ea6211c6cf13027f5c875592d78cbae8fa745aa101da75720d4"
+    },
+    {
+      "path": "public/layout.js",
+      "bytes": 46086,
+      "sha256": "6bd8e5fe85481b1c846324e8c519745f96837a65bb1ee9f1d7e4ee9054b77e37"
+    },
+    {
+      "path": "public/main-tags.js",
+      "bytes": 3101,
+      "sha256": "f747503fcd5046ac8dfbb2d078864277b102ae4dee26b2c2a855c110b03228d0"
+    },
+    {
+      "path": "public/network-controls.js",
+      "bytes": 2135,
+      "sha256": "b21caac27494af875ea3873f965ba8ca8e0f7fac2feb815ed8c1fc449aa914a1"
+    },
+    {
+      "path": "public/network-labels.js",
+      "bytes": 2313,
+      "sha256": "654cd5b62d33d3f850ecdac4057d970eac1414ede669a13709255cc3817cb38e"
+    },
+    {
+      "path": "public/shared-tours.js",
+      "bytes": 10096,
+      "sha256": "ad0895f56220e1d21ea7d613f246ab38dcc790d4a3f2e2d87387b9673a40de09"
+    },
+    {
+      "path": "public/style.css",
+      "bytes": 37096,
+      "sha256": "d7127caa065f4f4e7cce3ae11f5c6f10ae4e8e807d744d4b71389e97de65ac5e"
+    },
+    {
+      "path": "scripts/backup-history.py",
+      "bytes": 16107,
+      "sha256": "c2a9b8b67851751ea9782141c62806ce7cf86db2ccbc3c71096df702f19fd69c"
+    },
+    {
+      "path": "scripts/build.mjs",
+      "bytes": 1806,
+      "sha256": "4218c8f163dca0d6a590f1bfa0c174c837376c5cb841bdc3c3808b156c03490f"
+    },
+    {
+      "path": "scripts/import-chatgpt.py",
+      "bytes": 9344,
+      "sha256": "ef1fc69f6ab73b75ec31e2221a25f9c4c31b54fa7e40d721b8df480db86e1143"
+    },
+    {
+      "path": "src/analysis-model.mjs",
+      "bytes": 11208,
+      "sha256": "7cfcbc018e9a68f1dfcb3316129e3a4ec24f1d5a4c1066c3ddfd70faa923de2f"
+    },
+    {
+      "path": "src/analysis-providers.mjs",
+      "bytes": 8319,
+      "sha256": "81e2f459d24a52c2e2e05d80d6c520a0d0db77e0b2465ef52cee2f1770ff04c4"
+    },
+    {
+      "path": "src/analyzer.mjs",
+      "bytes": 37919,
+      "sha256": "62b08eb3631b289020074f033d65aea62f083241c0b973972dbf23e8adb3dc4b"
+    },
+    {
+      "path": "src/graph-view.js",
+      "bytes": 33473,
+      "sha256": "4d641287db48e57ce380d2da04d6dcc87dd729891e768e2e52b474263a97ae75"
+    },
+    {
+      "path": "src/heat.mjs",
+      "bytes": 5055,
+      "sha256": "3733098c83216ccce58c43f585843f78ffd07ebefda4d06cfa9455f532feb684"
+    },
+    {
+      "path": "src/readonly-query.mjs",
+      "bytes": 9701,
+      "sha256": "fbce6eacd900a383664e6a7f7a6831bc71560f7c223c5a2006a135e60c719fd8"
+    },
+    {
+      "path": "src/server.mjs",
+      "bytes": 9005,
+      "sha256": "c2cb1ae3e1ab91a18624153efb795f3f7b16a881a831005ad309667fc53af90f"
+    },
+    {
+      "path": "src/store.mjs",
+      "bytes": 35214,
+      "sha256": "6480529177ccac8c3a4087132b9b82c7b26c2564f1e1080563a03b71b665cc3c"
+    },
+    {
+      "path": "src/supervisor.mjs",
+      "bytes": 717,
+      "sha256": "5e99141ba15fdec3179808a890fe1756d5d39ed04c513569af308c599680a3e8"
+    },
+    {
+      "path": "src/ui-language.mjs",
+      "bytes": 1052,
+      "sha256": "4c233fd1f7cdd64e26e4b6e122432a7193a47008f02b2f734cd33a76bd2d6f48"
+    },
+    {
+      "path": "tests/analysis-providers.test.mjs",
+      "bytes": 4979,
+      "sha256": "79674a64dcaa7be8511923fd6df7e95070f9d898e47030ba41bf5e46e271de56"
+    },
+    {
+      "path": "tests/analyzer.test.mjs",
+      "bytes": 33948,
+      "sha256": "6283a8bcfa7822ece891e7a3f9e1dd91d9f74560b86ebb50d1dde5eb5fa9e05e"
+    },
+    {
+      "path": "tests/chatgpt-import.test.mjs",
+      "bytes": 2115,
+      "sha256": "e1a05fa6c5f4af4b48e19cd9dcba6241be3446e1c7012ec4702cd8cd8c32b5f8"
+    },
+    {
+      "path": "tests/chatgpt_import_test.py",
+      "bytes": 3801,
+      "sha256": "b765c41ee89e7fa69ccb81ce4d41f757c13d5c8cd41c24ff2b8e0ac6d3e59cda"
+    },
+    {
+      "path": "tests/compact-query.test.mjs",
+      "bytes": 1860,
+      "sha256": "3113403ae40092a769128919e6c7d5ae1ba385231ed2c2fde64768def8741089"
+    },
+    {
+      "path": "tests/deep-orbit-clock.test.mjs",
+      "bytes": 4627,
+      "sha256": "10014ac5455acc4e1e41e792e85b9d5337d9b0ac647ec9b033d04d7d3e216b06"
+    },
+    {
+      "path": "tests/handoff.test.mjs",
+      "bytes": 3630,
+      "sha256": "f9fda4e61bb457dbf9b4f8a0ccb405a4055133fcdf3428443d37bc2b4fa913aa"
+    },
+    {
+      "path": "tests/heat.test.mjs",
+      "bytes": 2998,
+      "sha256": "464e009a34d9a1ffb0a76ee607ae43a2888741988991da4f1e9c1bc136fb6661"
+    },
+    {
+      "path": "tests/history_backup_test.py",
+      "bytes": 2752,
+      "sha256": "898edefca4be16db462549ee040d5fadb76ce3c968e798228d446e1f7934a213"
+    },
+    {
+      "path": "tests/i18n.test.mjs",
+      "bytes": 2874,
+      "sha256": "66e0bc2835829a5991b827d75c56731aeaeab63ef41acc36f1b49ff475fb4508"
+    },
+    {
+      "path": "tests/inline-editor.test.mjs",
+      "bytes": 3232,
+      "sha256": "b455c223fc6dea12e56c03c82e309e252467e3b66e097b256d064621c6b71742"
+    },
+    {
+      "path": "tests/knowledge-view.test.mjs",
+      "bytes": 4831,
+      "sha256": "6a1131df71c84d902b2ffdfd0466f77b3f92832431cc45e5c7f5ce383179fe8f"
+    },
+    {
+      "path": "tests/layout.test.mjs",
+      "bytes": 38244,
+      "sha256": "46e5ae8e77e7525f9ef0f6d85c484e10c6d94c4f2e5ded1d767445cffd70ca10"
+    },
+    {
+      "path": "tests/lifecycle.test.mjs",
+      "bytes": 2099,
+      "sha256": "722d9aaab7f11de19bc220effce1abcf714e4ef1e87afb5211fd1d47480a5ad4"
+    },
+    {
+      "path": "tests/main-tags.test.mjs",
+      "bytes": 7498,
+      "sha256": "35ea20ca6db6e4d8f575dcfb1b76940596fc41f77b64e333510229c9181acee4"
+    },
+    {
+      "path": "tests/merge.test.mjs",
+      "bytes": 2465,
+      "sha256": "19b145e421e3e7ddd9333720aa3707d649a8685b5a88e8e2eabae9a268a483dc"
+    },
+    {
+      "path": "tests/navigation.test.mjs",
+      "bytes": 3759,
+      "sha256": "fc5cbcd96c5555997dde9c7f43e86bf41329a2e0551138e1756dedf60a2d8a23"
+    },
+    {
+      "path": "tests/network-controls.test.mjs",
+      "bytes": 4734,
+      "sha256": "df80e6c72e5597e4fe216aa4b0ce38474a3d5d6e9e93dff96d0641f861362706"
+    },
+    {
+      "path": "tests/network-labels.test.mjs",
+      "bytes": 2544,
+      "sha256": "cdb8f0e19e0a23306078cdc1654961c73517caf1781c902857d06459ba4ff95b"
+    },
+    {
+      "path": "tests/readonly-query.test.mjs",
+      "bytes": 5886,
+      "sha256": "9c0a0e7b7bf6d74cb825b19f8ee694902594d5349735b98fdd548a6256a490e6"
+    },
+    {
+      "path": "tests/relation-orbits.test.mjs",
+      "bytes": 3004,
+      "sha256": "a394ae9d33a5ebf56afe266261fd15838ffd5620a45a672ef867a7841ad79063"
+    },
+    {
+      "path": "tests/store.test.mjs",
+      "bytes": 16229,
+      "sha256": "e68e781f5447d6ad686e262350111f03c69cdb78cc3cbe85dfce96c5d79f655d"
+    },
+    {
+      "path": "third-party-licenses/marked-LICENSE.txt",
+      "bytes": 2942,
+      "sha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+    },
+    {
+      "path": "third-party-licenses/prettier-LICENSE.txt",
+      "bytes": 1065,
+      "sha256": "b0f2417199889f1c0d28ec4e0244eacf1a15de5819d61f641dd7d8f45153ac9c"
+    },
+    {
+      "path": "third-party-licenses/three-LICENSE.txt",
+      "bytes": 1081,
+      "sha256": "bfe119ea4fd413f5f7ca3fcd63adb0c4a073ed39daa2fe7d3e6b769e21272601"
+    },
+    {
+      "path": "docs/images/01-vault-network.png",
+      "bytes": 548053,
+      "sha256": "a60e24678b844a55899d0bd0f31dca09559ec0686fa07b88aabe6aec8164c0e6"
+    },
+    {
+      "path": "docs/images/02-knowledge-network.png",
+      "bytes": 1213902,
+      "sha256": "067f60c7a4ab2a8bbeb745b5c8422d179872aaeb89bed13ef9199baeb7899c1b"
+    },
+    {
+      "path": "docs/images/03-skills-network.png",
+      "bytes": 530957,
+      "sha256": "a8d3f8e04b0b4cb842a963ec5c03377c037b087c98ec099032d335942a710213"
+    }
+  ],
+  "self": "PUBLIC-FILES.json describes itself without a recursive content hash",
+  "validation": {
+    "buildPassed": true,
+    "nodeTestsPassed": 164,
+    "deepOrbitFixMatchesRuntime": true,
+    "privacyScanCompleted": true,
+    "gitTrackedFilesVerified": true,
+    "privacyScanScope": "bounded candidate-file patterns and resolved-path checks only",
+    "cacheDirectoriesAbsent": true,
+    "parentScriptsAndTestsIntact": true,
+    "stagedFileCount": 76,
+    "gitCommitCount": 0,
+    "manifestHashScope": "Git index content; PUBLIC-FILES.json excludes its own recursive content hash",
+    "finalStagedPatternCheck": "No matches for private drive paths, named private project markers, real connection identifiers or supported secret patterns. Reviewed placeholder values remain documented.",
+    "currentSnapshotTargetedTestsPassed": 45,
+    "preCommitAncestors": 0
+  },
+  "missingApprovedScreenshots": [],
+  "screenshotReview": [
+    {
+      "name": "01-vault-network.png",
+      "bytes": 548053,
+      "width": 1181,
+      "height": 2047,
+      "textOrExifChunks": false
+    },
+    {
+      "name": "02-knowledge-network.png",
+      "bytes": 1213902,
+      "width": 1180,
+      "height": 2048,
+      "textOrExifChunks": false
+    },
+    {
+      "name": "03-skills-network.png",
+      "bytes": 530957,
+      "width": 1180,
+      "height": 2047,
+      "textOrExifChunks": false
+    }
+  ],
+  "remoteUrl": "https://github.com/shenhang24/venus"
+}

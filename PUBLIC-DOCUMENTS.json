@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "publicationLanguage": "en",
+  "canonicalReadme": "README.md",
+  "publicDocuments": [
+    "README.md",
+    "docs/INTEGRATIONS.md",
+    "docs/DEPLOYMENT.md",
+    "docs/LICENSE-STATUS.md",
+    "docs/RELEASE-REVIEW.md",
+    "docs/PAGE-TOUR.md",
+    "docs/PRIVACY.md",
+    "docs/CREDITS.md",
+    "examples/sample.md",
+    "PUBLIC-DOCUMENTS.json"
+  ],
+  "excludedDocuments": [
+    {
+      "path": "docs/README.zh.private-draft.md",
+      "reason": "Private Chinese draft; do not include in public file manifest or future Git tracking"
+    },
+    {
+      "path": "README.en.md",
+      "reason": "Compatibility pointer; README.md is the sole public README entry"
+    }
+  ],
+  "thirdPartyNotices": "Preserve the original third-party-licenses texts unchanged; their language and copyright notices are authoritative.",
+  "screenshots": "Three user-approved actual app PNG screenshots included unchanged in docs/images; English captions in README and Credits.",
+  "scope": "Documentation selection only. This does not constitute a complete file manifest, sensitive-content scan, Git tracking verification or publication approval."
+}

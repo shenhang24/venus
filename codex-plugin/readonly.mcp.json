@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "venus-readonly": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/readonly-mcp.mjs"],
+      "env": { "VENUS_URL": "http://127.0.0.1:10001" }
+    }
+  }
+}

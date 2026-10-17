@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "venus": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/mcp.mjs"]
+    }
+  }
+}
