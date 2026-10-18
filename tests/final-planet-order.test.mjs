@@ -1,0 +1,36 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {AffinityLayout} from '../public/layout.js';import {buildMainTagGraph} from '../public/main-tags.js';
+for(const networkKind of ['vault','knowledge','skill']){
+const distance=(a,b)=>Math.hypot(...a.map((x,k)=>x-b[k]));
+const wrap=x=>Math.atan2(Math.sin(x),Math.cos(x));
+const fixture=()=>{const nodes=[];for(const [name,count]of [['A',12],['B',3],['C',2]])for(let i=0;i<count;i++)nodes.push({id:name+i,kind:networkKind,mainTags:[{name,reason:'synthetic',quote:'x'}]});for(let i=0;i<20;i++)nodes.push({id:'extra'+i,kind:networkKind});return nodes;};
+const build=edges=>buildMainTagGraph(fixture(),edges);
+const id=name=>'@main:'+networkKind+':'+name;
+
+test(networkKind+' | '+'planet rows respect the 1.15 local reach baseline and clearance rather than repeated doubling',()=>{
+ const nodes=[{id:'sun',kind:networkKind,isMainTag:true,domainConnectionCount:10000},...Array.from({length:100},(_,i)=>({id:'p'+String(i).padStart(3,'0'),kind:networkKind,isMainTag:true,domainConnectionCount:200-i})),...Array.from({length:100},(_,i)=>({id:'s'+i,kind:networkKind}))];const edges=nodes.filter(n=>n.id.startsWith('s')&&n.id!=='sun').map(n=>({from:'sun',to:n.id,membershipLink:true,strength:1}));
+ const l=new AffinityLayout();l.sync({nodes,edges});const rows=new Map();for(const o of Object.values(l.orbits).filter(o=>o.kind==='planet')){if(!rows.has(o.ring))rows.set(o.ring,[]);rows.get(o.ring).push(o);}const radii=[...rows.values()].map(os=>os[0].targetRadius);assert.equal([...rows.values()][0][0].rowBaselineGap,1.15*l.satelliteCenterExtents[0]);assert.ok(radii[0]>=1.15*l.satelliteCenterExtents[0]);for(const os of [...rows.values()].slice(1))assert.equal(os[0].rowBaselineGap,0,'satellite-free preceding rows do not reuse the primary reach');
+ for(let i=0;i<100;i++){l.step();for(const os of rows.values()){assert.equal(new Set(os.map(o=>distance(l.positions[o.host],l.positions[l.nodes.find(n=>l.orbits[n.id]===o).id]).toFixed(6))).size,1);}}
+ const planets=nodes.filter(n=>n.isMainTag&&n.id!=='sun');for(let i=0;i<planets.length;i++)for(let j=i+1;j<planets.length;j++){const a=l.nodeIndices.get(planets[i].id),b=l.nodeIndices.get(planets[j].id);assert.ok(distance(l.positions[planets[i].id],l.positions[planets[j].id])>=l.systemExtents[a]+l.systemExtents[b]-.00001);}
+});
+
+test(networkKind+' | '+'nine actual planet rows share all basis vectors; row ten changes plane without resetting Fibonacci capacity',()=>{
+ const nodes=[{id:'sun',kind:networkKind,isMainTag:true,domainConnectionCount:10000},...Array.from({length:100},(_,i)=>({id:'p'+i,kind:networkKind,isMainTag:true,domainConnectionCount:200-i}))],l=new AffinityLayout();l.sync({nodes,edges:[]});const rows=new Map(Object.values(l.orbits).map(o=>[o.ring,o]));assert.equal(rows.size,10);const first=rows.get(0).frame;for(let row=0;row<9;row++)assert.deepEqual(rows.get(row).frame,first);assert.notDeepEqual(rows.get(9).frame.normal,first.normal);assert.equal(rows.get(9).localSlots,55);
+ for(let i=0;i<100;i++)l.step();for(const n of nodes.slice(1)){const o=l.orbits[n.id],d=l.positions[n.id].map((x,k)=>x-l.positions.sun[k]);assert.ok(Math.abs(d.reduce((sum,x,k)=>sum+x*o.frame.normal[k],0))<1e-6);}
+});
+
+test(networkKind+' | '+'real deduplicated branch counts reorder planets with continuous positions, phase and stable ties',()=>{
+ const l=new AffinityLayout();l.sync(build([]));for(let i=0;i<120;i++)l.step();const before=structuredClone(l.positions),angles=new Map(['B','C'].map(n=>[id(n),l.orbits[id(n)].lockAngle]));
+ const edges=[0,1].map(i=>({from:id('C'),to:'extra'+i,type:'related',strength:1}));const graph=build([...edges,edges[0]]);assert.equal(graph.nodes.find(n=>n.id===id('C')).relationConnectionCount,4);l.sync(graph);assert.equal(JSON.stringify(l.positions),JSON.stringify(before));assert.equal(l.orbits[id('C')].ring,0);assert.equal(l.orbits[id('B')].ring,1);
+ let minGap=Infinity,maxStepFraction=0;for(let step=0;step<1800;step++){if(step===80)l.sync({...graph,nodes:graph.nodes.map(n=>n.id==='extra19'?{...n,sources:[{id:'synthetic-metadata'}]}:n)});const old=structuredClone(l.positions);l.step();for(const name of ['B','C']){const n=id(name),r=distance(old[n],old[id('A')]);maxStepFraction=Math.max(maxStepFraction,distance(old[n],l.positions[n])/r);const o=l.orbits[n],change=wrap(o.lockAngle-angles.get(n));assert.ok(change<0&&change>-.03,'phase keeps advancing continuously');angles.set(n,o.lockAngle);}minGap=Math.min(minGap,distance(l.positions[id('B')],l.positions[id('C')])-l.systemExtents[l.nodeIndices.get(id('B'))]-l.systemExtents[l.nodeIndices.get(id('C'))]);}
+ assert.ok(maxStepFraction<.05);assert.ok(minGap>=.02-1e-6);for(const name of ['B','C']){const n=id(name),o=l.orbits[n],r=l.positions[n].map((x,k)=>x-l.positions[o.host][k]);assert.ok(Math.abs(Math.hypot(...r)-o.targetRadius)<.001,'transition reaches its ranked orbit');assert.ok(Math.abs(r.reduce((sum,x,k)=>sum+x*o.frame.normal[k],0))<.001,'transition returns to the shared plane');}assert.ok(distance(l.positions[id('C')],l.positions[id('A')])<distance(l.positions[id('B')],l.positions[id('A')]));console.log(JSON.stringify({reorderMaxStepFraction:maxStepFraction,reorderMinGroupGap:minGap}));
+ const equal=build([...edges,{from:id('B'),to:'extra2',type:'related',strength:1}]);l.sync(equal);assert.equal(l.orbits[id('C')].ring,0);assert.equal(l.orbits[id('B')].ring,1);
+});
+
+test(networkKind+' | '+'equal counts retain the primary; strict overtake hands the whole cloud over across many moving frames',()=>{
+ const l=new AffinityLayout();l.sync(build([]));for(let i=0;i<120;i++)l.step();const added=Array.from({length:9},(_,i)=>({from:id('B'),to:'extra'+i,type:'related',strength:1}));l.sync(build(added));assert.equal(l.coreId,id('A'));l.step();const before=structuredClone(l.positions),oldRadius=distance(before[id('A')],before[id('B')]);l.sync(build([...added,{from:id('B'),to:'extra9',type:'related',strength:1}]));assert.equal(l.coreId,id('B'));assert.equal(JSON.stringify(l.positions),JSON.stringify(before));assert.deepEqual([...l.starIds],[id('B')]);
+ const spins=new Map(l.nodes.map(n=>[n.id,l.spinAngle(n.id)]));let frames=0,maxStep=0,maxCloudStep=0;for(let i=0;i<1800;i++){const old=structuredClone(l.positions);l.step();const move=distance(old[id('B')],l.positions[id('B')]);if(move>1e-7)frames++;maxStep=Math.max(maxStep,move);for(const n of l.nodes){maxCloudStep=Math.max(maxCloudStep,distance(old[n.id],l.positions[n.id]));assert.ok(l.positions[n.id].every(Number.isFinite));if(l.orbits[n.id]){const o=l.orbits[n.id],a=l.nodeIndices.get(n.id),b=l.nodeIndices.get(o.host);assert.ok(distance(l.positions[n.id],l.positions[o.host])>=l.orbitalClearance(a,b)-1e-6);}assert.equal(l.spinAngle(n.id),spins.get(n.id));}}
+ assert.ok(frames>100);assert.ok(maxCloudStep<oldRadius*.08);assert.ok(maxStep<oldRadius*.02);assert.ok(distance(l.positions[id('B')],before[id('A')])<.0001);console.log(JSON.stringify({handoffMovingFrames:frames,maxPrimaryStepFraction:maxStep/oldRadius,maxCloudStepFraction:maxCloudStep/oldRadius}));
+});
+
+}

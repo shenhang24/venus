@@ -44,16 +44,28 @@ Choose each cloud provider deliberately. Giving material to one platform does no
 
 Read the [Page Tour](docs/PAGE-TOUR.md) for each text view, network, integration panel and processing control. Read [Privacy and data flow](docs/PRIVACY.md) for what is saved locally, when configured AI services receive material, and how authorized retrieval returns context to the calling AI. This is a personal library: sharing is your choice, and the author should not receive your private database.
 
-## What it does
+## Four layers, with different jobs
 
-- **Personal knowledge base:** preserve original Markdown in Vault; derive knowledge with source quotes and locations; distinguish mentioned, practiced and verified skills.
-- **Knowledge handoff and retrieval:** let later AI work consult existing evidence through local CLI, stdio MCP or HTTP.
-- **Knowledge density:** consolidate repeated discussion into smaller knowledge units while retaining original sources. No fixed compression ratio or guarantee of lossless model summaries is claimed.
-- **Retrievable external long-term memory:** local files support continuity between conversations. This does not modify model weights or provide unlimited context; usefulness depends on retrieval, source verification and model judgment.
+- **Vault** preserves original Markdown from sources you deliberately import.
+- **AI Knowledge** provides traceable facts and methods for retrieval and later answers. Near-duplicate reuse requires a measured score of at least 95%: NFKC-normalized core text, whitespace removed, character-bigram multiset Sorensen-Dice. This is textual similarity, not semantic certainty. Related but different statements remain separate.
+- **AI Skills** stores user-endorsed methods, applicable scope and limitations, with evidence distinguishing user instructions from assistant suggestions and references. Retrieved methods never override current instructions or authorization. Legacy or unconfirmed records are not treated as endorsed executable methods.
+- **Concept Cloud** makes the understanding gained through discussion readable. A complete theme can span several questions and revisions. Admission requires traceable user endorsement of the relevant conclusion; silence, an assistant's own conclusion, or permission to execute is insufficient. Unresolved questions are optional records, not forced tasks. Independent Reference sections preserve source locations and how the understanding formed.
 
-Vault, knowledge and skills each have list and graph views. Heat reflects repeated work, and relationships retain reasons and sources. Public documentation is in English. The existing application interface supports Chinese and English; other system languages fall back to English. Previously approved screenshots, when available, remain authentic and unchanged rather than being recreated or translated.
+Concept extraction compares bounded candidates (up to four from the same source and four across sources). Shared cores and compatible additions can reuse a stable concept; different conditions, conflicts and evolution remain distinct and linked. Sources, endorsement evidence and manual edits are protected. This bounded process does not guarantee exhaustive semantic deduplication.
+
+Future unfinished segments and new material extract concepts in the existing analysis call. The initial active batch is frozen when the new analyzer first starts. Once it finishes, missing historical concepts are filled without regenerating completed knowledge or skills, using at most one of the five analysis slots. Paused or review-required entries in that batch delay backfill. Completed segments are not rerun merely by upgrading.
+
+Each layer has a readable content view and a separate network view. Titles and paragraphs summarize the actual content; tags support retrieval rather than replace meaningful names. English and Chinese interfaces are available. Read the [Page Tour](docs/PAGE-TOUR.md).
+
+## Spatial networks
+
+Networks support orbit, zoom, local node focus and source navigation. Stable connection counts select the primary center; ties retain the current center and promotion transitions smoothly. Relation types are opt-in multi-select filters; hiding an edge does not delete it.
+
+Continuous hierarchical orbits, bounded trails and exterior transfer channels show motion without an N-body physics simulation. Local-radius spacing permits group envelopes to overlap, with body-level avoidance. Fixed-orbit planets and temporarily offset satellites have different roles. Target speeds are independent; close approaches can couple actual speeds. Targeted synthetic checks are not a universal guarantee of collision-free dense scenes or constant frame rate.
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
+
+Current release: **0.4.0**. See [changes](CHANGELOG.md).
 
 ## Install and start
 
@@ -110,21 +122,28 @@ See [integration details](docs/INTEGRATIONS.md).
 
 Tests use synthetic fixtures and isolated temporary directories. Synthetic thousand/ten-thousand-node rendering checks do not establish performance for ten thousand real long documents. Window adaptation is not a test of every physical display. See [release review](docs/RELEASE-REVIEW.md) for the actual preparation results.
 
-The following actual app screenshots were supplied and approved by the user. They retain the original interface and show an earlier real run; displayed counts and FPS are snapshots, not a performance guarantee for the current version.
+The screenshots below are actual Chrome captures from an isolated English demo. All content is synthetic and precomputed results are labeled **Sample**; they do not depict live AI extraction or the author's private library.
 
-![Actual app screenshot — Vault network](docs/images/01-vault-network.png)
+![Vault sources](docs/images/01-vault-sources.jpg)
+![AI Knowledge](docs/images/02-ai-knowledge.jpg)
+![AI Skills](docs/images/03-ai-skills.jpg)
+![Concept Cloud](docs/images/04-concept-cloud.jpg)
+![Concept network](docs/images/08-concept-network.jpg)
 
-![Actual app screenshot — Knowledge network](docs/images/02-knowledge-network.png)
+![Vault network](docs/images/05-vault-network.jpg)
+![AI Knowledge network](docs/images/06-ai-knowledge-network.jpg)
+![AI Skill network](docs/images/07-ai-skill-network.jpg)
+![Import Markdown](docs/images/09-import-markdown.jpg)
+![Edit a sample record](docs/images/10-live-editor.jpg)
+![Saved sample record](docs/images/11-editor-saved.jpg)
 
-![Actual app screenshot — Skills network](docs/images/03-skills-network.png)
-
-Dependency acknowledgments, retained notices, visual inspiration and the included actual app screenshots are described in [Credits](docs/CREDITS.md).
+All eleven captures, including import, editing and the four networks, are in [docs/images](docs/images). Third-party notices remain in [third-party-licenses](third-party-licenses/).
 
 ## Data and licensing
 
-Back up your entire `data/` directory privately. Version history can retain old private text and consume substantial disk space. This publication tree excludes personal Vault, knowledge, skills, history, source exports, evidence, logs, credentials, private configuration and prior Git history.
+Back up your entire `data/` directory privately. Per-document version history retains private text. New full-table historical snapshots of classifications and relations are disabled; current tables still save normally. Existing historical files are not automatically deleted by this release. This publication tree excludes personal Vault, knowledge, skills, history, source exports, evidence, logs, credentials, private configuration and prior Git history.
 
-**No project open-source license has been selected.** Source visibility alone grants no general permission to use, modify or redistribute. The rights holder must choose a license before publication. Third-party notices are retained in [third-party-licenses](third-party-licenses/); see [license status](docs/LICENSE-STATUS.md).
+**No project open-source license has been selected.** Source visibility alone grants no general permission to use, modify or redistribute. No general open-source grant is made by this release. Third-party notices are retained in [third-party-licenses](third-party-licenses/); see [license status](docs/LICENSE-STATUS.md).
 
 Keeping original material, sources and relationships can allow a stronger, interface-compatible analyzer to improve organization later, even if the application stays the same. This requires a deliberate analyzer change and is not an automatic upgrade or a guarantee of accuracy.
 

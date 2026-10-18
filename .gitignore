@@ -11,3 +11,4 @@ __pycache__/
 # Local-only documentation drafts
 /docs/README.zh.private-draft.md
 /README.en.md
+dist/

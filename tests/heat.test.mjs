@@ -15,12 +15,12 @@ test('重复消息 ID 和纯寒暄不增加热度，重复关键词不改变颜�
   assert.equal(deriveHeat([a]).get('v').level,0);
   assert.equal(deriveHeat([b]).get('v').level,0);
 });
-test('示例项目项目基准优先，依据链可继承，无关提及不升金',()=>{
-  const v=vault('v',msg('1','17','准备实现'), '接手示例项目未完成任务');
+test('山河扇项目基准优先，依据链可继承，无关提及不升金',()=>{
+  const v=vault('v',msg('1','17','准备实现'), '接手山河扇未完成任务');
   const k={id:'k',kind:'knowledge',title:'战斗设计',body:'设计知识',sources:[{id:'v',quote:'准备实现'}]};
   const s={id:'s',kind:'skill',title:'能力分析',body:'技能',sources:[{id:'k',quote:'设计知识'}]};
-  const unrelated=vault('u',msg('2','17','偶尔提到示例项目'), '早餐做法');
-  const h=deriveHeat([v,k,s,unrelated],{rules:[{id:'example',name:'示例项目',level:5,terms:['示例项目'],reason:'Synthetic explicit override'}]});
+  const unrelated=vault('u',msg('2','17','偶尔提到山河扇'), '早餐做法');
+  const h=deriveHeat([v,k,s,unrelated]);
   for(const id of ['v','k','s']){assert.equal(h.get(id).level,5);assert.equal(h.get(id).basis,'user-project');}
   assert.equal(h.get('u').level,0);
 });

@@ -9,9 +9,9 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'work' / 'daily-backup'
-SINCE = datetime.fromisoformat('2026-09-30T00:00:00+10:00').timestamp()
+SINCE = 0  # Caller explicitly selects exported source material.
 
 def digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()

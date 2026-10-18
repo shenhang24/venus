@@ -20,12 +20,6 @@ Venus runs on Node.js. The Windows launcher uses PowerShell and a browser/applic
 
 The compact workspace was informed by the user's requested Obsidian-style navigation and compact desktop-chat typography. These are visual references, separate from the dependency list; no affiliation, licensed product assets or exact reproduction of another application's internal design system is claimed.
 
-## Actual app screenshots
+## Actual sample screenshots
 
-Three user-approved actual app screenshots are included, unchanged, with English captions. They depict an earlier real run rather than certifying the latest layout or FPS.
-
-- [Actual app screenshot — Vault network](images/01-vault-network.png)
-- [Actual app screenshot — Knowledge network](images/02-knowledge-network.png)
-- [Actual app screenshot — Skills network](images/03-skills-network.png)
-
-The supplied PNG files were visually reviewed for readable private content and contain no text/EXIF metadata chunks. Their inclusion does not grant a general license for the application or imply provider endorsement.
+Eleven actual Chrome page captures are included in docs/images. They show a separate English demonstration containing only synthetic source material and precomputed Sample results. They do not depict live AI analysis or the author's private workspace. Screenshot dimensions are 1080 by 1729 pixels.

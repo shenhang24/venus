@@ -6,7 +6,8 @@ export const HEAT_LEVELS = [
   {name:'橙色',color:'#f5a451',label:'持续投入'},
   {name:'金色',color:'#f3ce60',label:'长期重点'},
 ];
-export const DEFAULT_HEAT_RULES = [];
+export const DEFAULT_HEAT_RULES = [{id:'shanhefan',name:'山河扇',level:5,
+  terms:['山河扇','ShanheFan'],reason:'用户指定：现在的山河扇项目可标为金色。'}];
 const dayFormat = new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'});
 function dayOf(value){
   if (!value) return null;

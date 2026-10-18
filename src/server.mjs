@@ -1,4 +1,5 @@
 import http from "node:http";
+import {createLibraryRefresh} from "./library-refresh.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,8 @@ import { AutoAnalyzer } from './analyzer.mjs';
 import {readWindowsDisplayLanguage} from './ui-language.mjs';
 import {createAnalysisProvider,readProviderConfig,saveProviderConfig,describeProvider} from './analysis-providers.mjs';
 import {createReadQuery} from './readonly-query.mjs';
-
+import {proxyTunnelControl} from './tunnel-control-proxy.mjs';
+import {ConceptExtractor,conceptTemplate} from './concepts.mjs';
 export const project = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -17,14 +19,15 @@ export function createApp({
   port = 10001,
   onLifecycle = null,
   enableAnalysis = false,
-
+  tunnelControlTransport = proxyTunnelControl,
 } = {}) {
   const store = new Store(root),
     clients = new Set();
   store.backgroundRefresh=true;
   const provider=createAnalysisProvider(store.meta);
   const readonlyQuery=createReadQuery(store);
-  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner:provider.runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true}):null;
+  const concepts=new ConceptExtractor(store);
+  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner:provider.runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true,conceptExtractor:concepts}):null;
   const systemDisplayLanguage=readWindowsDisplayLanguage();
   let revision = store.state.revision;
   const json = (res, data, status = 200) => {
@@ -44,10 +47,14 @@ export function createApp({
       )
         return json(res, { error: "本机访问限定" }, 403);
       const url = new URL(req.url, "http://127.0.0.1");
+      if(req.method==='GET'&&url.pathname==='/api/ready')return json(res,{ready:true,root:store.root});
+      if(req.method==='GET'&&url.pathname==='/api/mcp-control/status'){const result=await tunnelControlTransport('status');return json(res,result.data,result.status);}
       if(req.method==='GET'&&url.pathname.startsWith('/api/read/'))return json(res,readonlyQuery(url.pathname.slice('/api/read/'.length),Object.fromEntries(url.searchParams)));
       if (req.method === 'GET' && url.pathname === '/api/ui-language')
         return json(res,{systemDisplayLanguage,supported:['zh','en'],fallback:'en'});
       if(req.method==='GET'&&url.pathname==='/api/analysis-provider')return json(res,{saved:describeProvider(readProviderConfig(store.meta)),active:provider.description,activation:'next-backend-start',connectionTested:false});
+      if(req.method==='GET'&&url.pathname==='/api/concepts/template')return json(res,{template:conceptTemplate,automatic:'existing-five-lane-analysis',startsModelCall:false,ruleVersion:2});
+      if(req.method==='GET'&&url.pathname==='/api/concepts/questions')return json(res,{items:Object.values(concepts.state.ignoredQuestions||{}).filter(q=>q.status==='ignored'),ignorable:true,createsTasks:false});
       if (req.method === "GET" && url.pathname === "/api/state")
         return json(res, store.snapshot({summary:url.searchParams.get('summary') === '1',refresh:false}));
       if (req.method === "GET" && url.pathname === "/api/node")
@@ -98,6 +105,12 @@ export function createApp({
           res.once("finish", () => setTimeout(() => onLifecycle(data.action), 100));
           return json(res, { accepted: true, action: data.action });
         }
+        if(['/api/mcp-control/start','/api/mcp-control/stop'].includes(url.pathname)){
+          const result=await tunnelControlTransport(url.pathname.split('/').at(-1),{method:'POST',data,token:String(req.headers['x-venus-token']||'')});
+          delete data.key;for(const chunk of chunks)chunk.fill(0);
+          return json(res,result.data,result.status);
+        }
+        if(url.pathname==='/api/concepts/plan')return json(res,concepts.plan(data));
         const routes = {
           '/api/handoff/checkpoint':()=>store.checkpoint(data),
           '/api/read/aux-tags':()=>readonlyQuery.setAuxiliary(data),
@@ -162,9 +175,10 @@ export function createApp({
       json(res, { error: e.message }, e.status || 500);
     }
   });
+  const libraryRefresh=createLibraryRefresh(store);
   const timer = setInterval(() => {
     try {
-      store.scan();
+      libraryRefresh.poll();
       if (revision !== store.state.revision) {
         revision = store.state.revision;
         for (const c of clients) c.write("data: " + revision + "\n\n");
@@ -177,6 +191,7 @@ export function createApp({
   app.on("close", () => {
     analyzer?.stop();
     clearInterval(timer);
+    libraryRefresh.close();
     for (const c of clients) c.end();
   });
   if(analyzer)app.once('listening',()=>analyzer.start());
@@ -190,7 +205,7 @@ if (
   const { app, store } = createApp({
     root: process.env.VENUS_DATA || path.join(project, "data"),
     port,
-    enableAnalysis:process.env.VENUS_ANALYSIS === '1',
+    enableAnalysis:process.env.VENUS_ANALYSIS !== '0',
     onLifecycle: process.send ? (action) => {
       store.analyzer?.stop();
       if (process.send) process.send({ action });

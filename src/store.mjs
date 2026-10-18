@@ -2,8 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { deriveHeat, DEFAULT_HEAT_RULES } from './heat.mjs';
+import {knowledgeSimilarity,KNOWLEDGE_SIMILARITY_THRESHOLD} from './knowledge-similarity.mjs';
+import {skillMethodPolicy,skillMethodUse} from './skill-methods.mjs';
+import {conceptAdmission} from './concept-admission.mjs';
 export const hash = (s) => createHash("sha256").update(s).digest("hex");
-const dirs = { vault: "Vault", knowledge: "知识点", skill: "技能" };
+const dirs = { vault: "Vault", knowledge: "知识点", skill: "技能", concept: "概念云" };
 const defaultTypes = [
   ["related", "内容相关", "#a99ad9"],
   ["same", "逻辑相同", "#77a5d2"],
@@ -62,6 +65,9 @@ export class Store {
     atomic(this.file, JSON.stringify(this.state, null, 2));
   }
   archive(rel, raw) {
+    // Aggregate tables keep their current contents, without full historical copies.
+    const normalized=rel.replaceAll('\\','/');
+    if(normalized==='.venus/classifications.md'||normalized==='知识点/_关系.md')return;
     const dir = path.join(this.meta, "history", hash(rel).slice(0, 16));
     fs.mkdirSync(dir, { recursive: true });
     atomic(
@@ -146,6 +152,7 @@ export class Store {
     const byId=new Map(nodes.map(n=>[n.id,n]));
     this.nodeById=byId;
     for(const n of nodes)n.analysisNeedsReview=n.sources.some(s=>(s.sourceHash&&s.sourceHash!==byId.get(s.id)?.hash)||!this.sourceQuoteValid(s,byId));
+    for(const n of nodes)if(n.kind==='skill'){const policy=n.methodPolicy,source=byId.get(policy?.sourceId);n.methodPolicyNeedsReview=!!policy&&policy.status==='user-confirmed'&&(!source||policy.sourceHash!==source.hash||!source.body.includes(policy.recognitionQuote));n.methodUse=skillMethodUse(n);}
     this.relations = relations;
     for(const [target,merge] of Object.entries(this.state.merges||{})){
       const main=byId.get(target);
@@ -270,7 +277,7 @@ export class Store {
       relationDocumentHash: fs.existsSync(rel)
         ? hash(fs.readFileSync(rel))
         : null,
-      features:{classification:true,dynamicLayout:true,activityHeat:true,continuousMerge:true,memorySnapshot:true,incrementalAnalysisReads:true,inlineTitleEdit:true,incrementalImportMetadata:true},
+      features:{classification:true,dynamicLayout:true,activityHeat:true,continuousMerge:true,memorySnapshot:true,incrementalAnalysisReads:true,inlineTitleEdit:true,incrementalImportMetadata:true,concepts:true,conceptAdmission:true,skillMethods:true,knowledgeDedupeThreshold:.95},
       version:'0.3.6',
       analysis:this.analyzer?.status()||{enabled:false,running:false,total:this.nodes.filter(n=>n.kind==='vault').length},
       revision: this.state.revision,
@@ -364,8 +371,8 @@ export class Store {
   }
   upsert(input) {
     this.refreshForIds([...(this.nodeById?.has(input.id)?[input.id]:[]),...(Array.isArray(input.sources)?input.sources.map(s=>s.id):[])]);
-    if (!["knowledge", "skill"].includes(input.kind))
-      fail("只能写入知识点或技能");
+    if (!["knowledge", "skill", "concept"].includes(input.kind))
+      fail("只能写入 AI 知识点、AI 技能或概念");
     if (
       !input.id ||
       ["__proto__", "constructor", "prototype"].includes(input.id) ||
@@ -377,9 +384,20 @@ export class Store {
     if (existing && input.expectedHash !== existing.hash)
       fail("内容已变化，请重新读取后修订", 409);
     if (!input.title?.trim() || !input.body?.trim()) fail("标题与正文不能为空");
+    if(input.kind==='knowledge'&&existing&&knowledgeSimilarity(existing.body,input.body)<KNOWLEDGE_SIMILARITY_THRESHOLD)fail('AI 知识点实测相似度不足95%，须保留独立节点，不能整合覆盖',409);
     if ((input.sources || []).some((s) => s.id === input.id))
       fail("不能以自身作为来源");
     this.validateSources(input.sources);
+    if(input.kind==='concept'&&!input.sources.every(s=>this.nodeById.get(s.id)?.kind==='vault'))fail('概念须直接引用 Vault 原文');
+    if(input.kind==='concept'&&input.conceptStance&&!['用户观点','讨论假设','助手建议','已确认结论'].includes(input.conceptStance))fail('概念认识性质无效');
+    if(input.kind==='concept'){
+      if(existing&&this.state.manualEdits?.[existing.id]&&(input.body!==existing.body||input.title!==existing.title))fail('人工编辑概念须通过编辑器修订，自动整合不能覆盖',409);
+      const ref=input.conceptReferences?.at(-1),source=this.nodeById.get(ref?.sourceId),range=ref?.readRange;
+      if(!source||source.kind!=='vault'||ref.sourceHash!==source.hash||!range||!Number.isInteger(range.start)||!Number.isInteger(range.end)||range.start<0||range.end>source.body.length||range.start>range.end)fail('概念须保留原文内的用户认可及结论依据');
+      const accepted=conceptAdmission({admission:ref.admission},{start:range.start,end:range.end,text:source.body.slice(range.start,range.end)},{source,priorEvidence:ref.discussion||[]});
+      if(!accepted.accepted)fail('概念未满足用户认可准入：'+accepted.reason);
+      ref.discussion=[...accepted.evidence,...(ref.discussion||[])].filter((d,i,all)=>all.findIndex(x=>x.role===d.role&&x.start===d.start&&x.end===d.end)===i);
+    }
     if (
       input.kind === "skill" &&
       !input.sources.some(
@@ -392,17 +410,25 @@ export class Store {
       !["涉及", "实践", "验证"].includes(input.level)
     )
       fail("技能程度须为涉及、实践或验证");
+    let methodPolicy;
+    if(input.kind==='skill'){
+      const unchanged=existing&&input.body===existing.body&&(!input.methodPolicy||JSON.stringify(input.methodPolicy)===JSON.stringify(existing.methodPolicy));
+      methodPolicy=unchanged?existing.methodPolicy:skillMethodPolicy(input.methodPolicy,this.nodeById.get(input.methodPolicy?.sourceId),input.body);
+      if(existing?.methodPolicy?.status==='user-confirmed'&&!unchanged&&(methodPolicy.status!=='user-confirmed'||methodPolicy.scope!==existing.methodPolicy.scope||methodPolicy.limitations!==existing.methodPolicy.limitations||methodPolicy.recognitionTarget!==existing.methodPolicy.recognitionTarget))fail('不能用未确认建议或不同范围的方法覆盖已确认方法，须独立保存',409);
+    }
     const rel = existing?.path || dirs[input.kind] + "/" + input.id + ".md";
     const m = {
       id: input.id,
       title: input.title,
       kind: input.kind,
-      sources: input.sources,
+      sources:input.kind==='knowledge'&&existing?[...new Map([...existing.sources,...input.sources].map(s=>[JSON.stringify(s),s])).values()]:input.kind==='skill'&&methodPolicy?.status==='user-confirmed'?[...new Map([...(existing?.sources||[]),...input.sources,{id:methodPolicy.sourceId,sourceHash:methodPolicy.sourceHash,quote:methodPolicy.recognitionQuote,locator:methodPolicy.recognitionLocator}].map(s=>[JSON.stringify(s),s])).values()]:input.sources,
       level: input.level || "涉及",
       domain: input.domain || "",
       occupations: input.occupations || "",
       projects: input.projects || [],
       decision: input.decision || "新增",
+      ...(input.kind==='concept'?{conceptStance:input.conceptStance||existing?.conceptStance||'讨论假设',conceptReferences:input.conceptReferences||existing?.conceptReferences||[],managedBy:input.managedBy||existing?.managedBy||'manual'}:{}),
+      ...(input.kind==='skill'&&methodPolicy?{methodPolicy}:{}),
     };
     const raw = "<!-- venus:" + JSON.stringify(m) + " -->\n" + input.body;
     if (existing)
@@ -437,7 +463,7 @@ export class Store {
     const updated=this.find(id);
     this.state.manualEdits ||= {};
     this.state.manualEdits[id]={hash:updated.hash,time:new Date().toISOString()};
-    this.requestReview(id);
+    if(n.kind!=='concept')this.requestReview(id);else this.save();
     return this.find(id);
   }
   requestReview(id){
@@ -486,7 +512,6 @@ export class Store {
   writeRelations() {
     const rel = "知识点/_关系.md";
     const file = path.join(this.root, rel);
-    if (fs.existsSync(file)) this.archive(rel, fs.readFileSync(file, "utf8"));
     atomic(
       file,
       "<!-- venus:" +
@@ -633,11 +658,11 @@ export class Store {
     return id === "@relations" ? { relations: this.relations } : this.find(id);
   }
   resetLayout({kind='all',mode='random'}={}){
-    if(!['all','vault','knowledge','skill'].includes(kind))fail('布局参数无效');
+    if(!['all','vault','knowledge','skill','concept'].includes(kind))fail('布局参数无效');
     if(!['random','center'].includes(mode))fail('布局参数无效');
     this.scan();this.state.layoutEpochs||={};
     this.state.layoutResetModes||={};
-    const kinds=kind==='all'?['vault','knowledge','skill']:[kind];
+    const kinds=kind==='all'?['vault','knowledge','skill','concept']:[kind];
     for(const k of kinds){
       const epoch=(this.state.layoutEpochs[k]||0)+1;this.state.layoutEpochs[k]=epoch;
       this.state.layoutResetModes[k]=mode;
@@ -651,7 +676,7 @@ export class Store {
   }
   checkpointLayout({ kind, positions,epoch=0,protocol=0 }) {
     if (
-      !["vault", "knowledge", "skill"].includes(kind) ||
+      !["vault", "knowledge", "skill", "concept"].includes(kind) ||
       !positions ||
       typeof positions !== "object"
     )
@@ -709,7 +734,6 @@ export class Store {
     if (!["manual", "codex"].includes(method)) fail("分类方式无效");
     const rel = ".venus/classifications.md",
       file = path.join(this.root, rel);
-    if (fs.existsSync(file)) this.archive(rel, fs.readFileSync(file, "utf8"));
     this.classifications[id] = {
       summary: summary.trim(),
       tags: normalized,

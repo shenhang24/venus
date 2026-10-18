@@ -1,30 +1,22 @@
 {
-  "version": 1,
+  "version": "0.4.0",
   "publicationLanguage": "en",
   "canonicalReadme": "README.md",
   "publicDocuments": [
+    "CHANGELOG.md",
     "README.md",
-    "docs/INTEGRATIONS.md",
+    "RELEASE-NOTES.md",
+    "docs/CREDITS.md",
     "docs/DEPLOYMENT.md",
+    "docs/INTEGRATIONS.md",
     "docs/LICENSE-STATUS.md",
-    "docs/RELEASE-REVIEW.md",
     "docs/PAGE-TOUR.md",
     "docs/PRIVACY.md",
-    "docs/CREDITS.md",
+    "docs/RELEASE-REVIEW.md",
+    "examples/sample-conversation.md",
     "examples/sample.md",
-    "PUBLIC-DOCUMENTS.json"
+    "templates/concept.md"
   ],
-  "excludedDocuments": [
-    {
-      "path": "docs/README.zh.private-draft.md",
-      "reason": "Private Chinese draft; do not include in public file manifest or future Git tracking"
-    },
-    {
-      "path": "README.en.md",
-      "reason": "Compatibility pointer; README.md is the sole public README entry"
-    }
-  ],
-  "thirdPartyNotices": "Preserve the original third-party-licenses texts unchanged; their language and copyright notices are authoritative.",
-  "screenshots": "Three user-approved actual app PNG screenshots included unchanged in docs/images; English captions in README and Credits.",
-  "scope": "Documentation selection only. This does not constitute a complete file manifest, sensitive-content scan, Git tracking verification or publication approval."
+  "screenshots": "Eleven real Chrome captures of synthetic English sample data; no live extraction.",
+  "thirdPartyNotices": "Retained unchanged."
 }

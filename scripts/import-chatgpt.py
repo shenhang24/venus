@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-DEFAULT_BEFORE = '2026-10-16T00:00:00+11:00'
+DEFAULT_BEFORE = '9999-12-31T00:00:00+00:00'
 
 def load_export(source):
     source = Path(source)
@@ -135,7 +135,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     report = {'source':str(args.source.resolve()), 'before':args.before, 'totalConversations':len(data),
               'converted':[], 'excluded':[], 'errors':[], 'imported':0, 'duplicates':0}
-    if args.import_vault and Path(request('state?summary=1').get('root', '')).resolve() != (Path(__file__).resolve().parent.parent / 'data').resolve():
+    if args.import_vault and Path(request('state?summary=1').get('root', '')).resolve() != (Path(__file__).resolve().parents[1] / 'data').resolve():
         raise ValueError('Venus 资料库身份不符，未写入')
     seen = set()
     for conversation in data:

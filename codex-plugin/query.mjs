@@ -19,7 +19,7 @@ export async function compactQuery(query,{limit=3,client=createReadonlyClient(),
 }
 async function main(){
  const entryUptimeMs=process.uptime()*1000,args=process.argv.slice(2);
- if(args.length!==1){console.error('Usage: node codex-plugin/query.mjs "Example"');process.exitCode=2;return;}
+ if(args.length!==1){console.error('Usage: node ./codex-plugin/query.mjs "ExampleTopic"');process.exitCode=2;return;}
  try{const result=await compactQuery(args[0]);result.timing.processEntryUptimeMs=Math.round(entryUptimeMs*100)/100;result.timing.processElapsedMs=Math.round(process.uptime()*100000)/100;console.log(JSON.stringify(result));}catch(e){console.log(JSON.stringify({error:e.message}));process.exitCode=1;}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)await main();

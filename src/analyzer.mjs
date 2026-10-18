@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {hash} from './store.mjs';
 import {createModelRunner} from './analysis-model.mjs';
+import {knowledgeSimilarity,normalizedKnowledge,KNOWLEDGE_SIMILARITY_THRESHOLD} from './knowledge-similarity.mjs';
+import {validateContentTitle} from './content-titles.mjs';
+import {skillMethodPolicy} from './skill-methods.mjs';
 
 function atomic(file,value){const temp=file+'.tmp';fs.writeFileSync(temp,JSON.stringify(value,null,2));fs.renameSync(temp,file);}
 const requireText=(text,label)=>{if(typeof text!=='string'||!text.trim())throw new Error(label+'不能为空');return text;};
@@ -38,7 +41,7 @@ function rankCandidates(nodes,text,kind){
 }
 
 export class AutoAnalyzer {
-  constructor(store,{runner,chunkSize=40000,interval=2000,clock=()=>Date.now(),maxConcurrent=1,enableMainTagBackfill=false}={}){
+  constructor(store,{runner,chunkSize=40000,interval=2000,clock=()=>Date.now(),maxConcurrent=1,enableMainTagBackfill=false,conceptExtractor=null}={}){
     this.store=store;this.chunkSize=chunkSize;this.interval=interval;this.clock=clock;
     this.file=path.join(store.meta,'analysis.json');
     this.state=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file,'utf8')):
@@ -47,6 +50,7 @@ export class AutoAnalyzer {
     this.runner=runner||createModelRunner(path.join(store.meta,'analysis-runtime'));
     this.maxConcurrent=Math.max(1,Math.min(5,Math.floor(maxConcurrent)||1));
     this.enableMainTagBackfill=enableMainTagBackfill;
+    this.conceptExtractor=conceptExtractor;
     this.active=new Map();this.tagReservations=new Set();this.running=false;this.stopped=false;this.current=null;
     store.analyzer=this;
   }
@@ -63,6 +67,7 @@ export class AutoAnalyzer {
       withNotes:entries.filter(e=>e.issues.length>0).length,
       scheduling:this.maxConcurrent>1?'parallel-files':'sequential-files',
       maxConcurrent:this.maxConcurrent,activeFiles:[...this.active.values()].map(({controller,...file})=>file),
+      concepts:this.conceptExtractor?.status()||null,
       inputPolicy:'direct-local-material',readDiagnostics:{...this.store.readStats,lastCommit:this.state.lastCommitReadStats||null},
       mainTagProgress:{covered:this.store.nodes.filter(n=>!n.mergedInto&&n.mainTags?.length).length,reviewed:this.store.nodes.filter(n=>!n.mergedInto&&this.tagsReviewed(n)).length,total:this.store.nodes.filter(n=>!n.mergedInto).length,unresolved:this.store.nodes.filter(n=>!n.mergedInto&&this.tagsReviewed(n)&&!n.mainTags?.length).length,error:this.state.mainTagLastError||null},
       resumedSizeDeferred:this.state.lastSizeResume?.count||0,
@@ -139,6 +144,7 @@ export class AutoAnalyzer {
     if(this.active.size>=this.maxConcurrent)return;
     if(this.stopped||!this.state.enabled||this.clock()<(this.state.cooldownUntil||0))return;
     this.discover();
+    this.conceptExtractor?.initializeBatch();
     const available=Object.values(this.state.entries).filter(e=>
       !this.active.has(e.sourceId)&&!['done','review'].includes(e.status)&&
       this.store.nodes.some(n=>n.id===e.sourceId&&!n.mergedInto)&&
@@ -147,9 +153,29 @@ export class AutoAnalyzer {
     const order=new Map(this.store.state.jobs.map((job,index)=>[job.sourceId,index]));
     available.sort((a,b)=>(order.get(a.sourceId)??Infinity)-(order.get(b.sourceId)??Infinity));
     if(this.maxConcurrent===1&&available[0]?.retryAt>this.clock())return;
-    const ready=available.filter(entry=>entry.retryAt<=this.clock()).slice(0,this.maxConcurrent-this.active.size);
-    if(this.enableMainTagBackfill&&!ready.length&&this.store.nodes.some(n=>!n.mergedInto&&!this.tagsReviewed(n)&&!this.tagReservations.has(n.id)))return this.processMainTagBatch();
+    const historical=this.conceptExtractor?.batchComplete()&&!([...this.active.values()].some(f=>f.taskKind==='concept-only'))&&this.conceptExtractor.nextHistorical(this.clock())&&(this.maxConcurrent>1||!available.length||this.conceptBackfillTurn!==false);
+    const free=this.maxConcurrent-this.active.size;
+    const ready=available.filter(entry=>entry.retryAt<=this.clock()).slice(0,free-(historical?1:0));
+    if(historical){this.conceptBackfillTurn=false;await Promise.all([this.processConceptBackfill(),...ready.map(entry=>this.processEntry(entry))]);return;}
+    if(this.enableMainTagBackfill&&!ready.length&&this.store.nodes.some(n=>n.kind!=='concept'&&!n.mergedInto&&!this.tagsReviewed(n)&&!this.tagReservations.has(n.id)))return this.processMainTagBatch();
+    if(ready.length)this.conceptBackfillTurn=true;
     await Promise.all(ready.map(entry=>this.processEntry(entry)));
+  }
+  async processConceptBackfill(){
+    const task=this.conceptExtractor.nextHistorical(this.clock());if(!task)return;
+    const {source,part,key,pending}=task,activeKey='concept-only:'+source.id,controller=new AbortController();
+    const used=new Set([...this.active.values()].map(f=>f.slot)),slot=Array.from({length:this.maxConcurrent},(_,i)=>i+1).find(n=>!used.has(n));if(!slot)return;
+    this.active.set(activeKey,{sourceId:activeKey,title:source.title,taskKind:'concept-only',offset:part.start,end:part.end,total:source.body.length,slot,controller});this.running=true;
+    this.conceptExtractor.state.backfillStarted=true;
+    const artifact=path.join(this.directory,'concept-'+hash(source.id+'|'+source.hash+'|'+part.start+'|'+part.end)+'.json');
+    try{
+      const cached=pending&&pending.start===part.start&&pending.end===part.end?path.join(this.directory,path.basename(pending.artifact)):artifact;
+      const result=fs.existsSync(cached)?JSON.parse(fs.readFileSync(cached,'utf8')):await this.runner({purpose:'concept-only',conceptsEnabled:true,source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},existingConcepts:this.conceptExtractor.context(source,part.text),knownConceptDiscussion:this.conceptExtractor.knownDiscussion(source),existingCandidates:[],mainTagCandidates:[],relationshipTypes:[]},{signal:controller.signal});
+      if(this.stopped||!this.state.enabled||controller.signal.aborted)throw Error('ANALYSIS_CANCELLED');
+      if(this.store.find(source.id).hash!==source.hash)throw Error('SOURCE_CHANGED');
+      atomic(artifact,result);this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[]);
+    }catch(error){if(error.message!=='ANALYSIS_CANCELLED'){this.conceptExtractor.failHistorical(key,error,this.clock());if(/rate.?limit|usage.?limit|quota|\b429\b/i.test(error.message))this.state.cooldownUntil=this.clock()+30*60*1000;}}
+    finally{this.active.delete(activeKey);this.running=this.active.size>0;this.current=([...this.active.values()].map(({controller,...f})=>f))[0]||null;this.save();}
   }
   async processEntry(entry){
     const controller=new AbortController();
@@ -172,6 +198,7 @@ export class AutoAnalyzer {
       }
       tagCandidates=this.reserveMainTagCandidates();
       const payload={source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},
+        conceptsEnabled:!!this.conceptExtractor,existingConcepts:this.conceptExtractor?.context(source,part.text)||[],knownConceptDiscussion:this.conceptExtractor?.knownDiscussion(source)||[],
         mainTagCandidates:tagCandidates,mainTagRegistry:[...new Set(this.store.nodes.flatMap(n=>(n.mainTags||[]).map(t=>t.name)))],relationshipTypes:this.store.state.types,
         continuationContext:{coveredUntil:entry.offset,previousSegments:entry.parts.slice(-3).map(p=>({start:p.start,end:p.end,summary:p.summary})),
           savedKnowledgeIds:priorKnowledge.map(n=>n.id)},
@@ -191,6 +218,10 @@ export class AutoAnalyzer {
       this.apply(result,source,entry,candidates,part);
       if(result.mainTags?.length)this.applyMainTagUpdates([{id:source.id,mainTags:result.mainTags,reviewReason:''}],[{id:source.id,hash:source.hash}],true);
       this.applyMainTagUpdates(result.mainTagUpdates||[],tagCandidates);
+      if(this.conceptExtractor&&Array.isArray(result.concepts)){
+        try{this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[]);}
+        catch(error){this.conceptExtractor.defer(source,part,artifact,error);entry.issues.push({segment:part.start,text:'概念保存待补提：'+error.message});}
+      }
       entry.offset=part.end;entry.parts.push({start:part.start,end:part.end,summary:result.summary,tags:result.tags,artifact:path.basename(artifact)});
       entry.issues.push(...result.issues.map(text=>({segment:part.start,text})));
       entry.attempts=0;entry.retryAt=0;entry.lastError=null;this.state.lastError=null;
@@ -325,6 +356,7 @@ export class AutoAnalyzer {
     const candidateIds=new Set(candidates.map(n=>n.id));
     for(const tag of r.tags){requireText(tag.name,'类别');requireText(tag.reason,'分类理由');quote(text,tag.quote);if(tag.name.length>40)throw new Error('类别名过长');}
     for(const n of [...r.knowledge,...r.skills]){
+      if(r.unresolvedQuestions!==undefined)validateContentTitle(n.title,[n.category,...(n.mainTags||[]).map(t=>t.name)]);
       for(const field of ['key','title','body','category','categoryReason'])requireText(n[field],field);
       if(n.existingId&&!candidateIds.has(n.existingId))throw new Error('不能引用候选以外的已有知识');
     }
@@ -366,8 +398,9 @@ export class AutoAnalyzer {
     const remember=id=>{if(!entry.outputs.includes(id))entry.outputs.push(id);};
     const upsert=(kind,item,sources,body,extra={})=>{
       const existing=item.existingId?this.store.nodes.find(n=>n.id===item.existingId):undefined;
-      const reusable=kind==='skill'||existing?.sources.some(s=>s.id===source.id);
-      const id=(reusable&&item.existingId)||canonical(kind,kind==='knowledge'?source.id+'|'+item.key:item.key),old=this.store.nodes.find(n=>n.id===id);
+      let id=item.existingId&&existing?existing.id:canonical(kind,kind==='knowledge'?source.id+'|'+item.key:item.key),old=this.store.nodes.find(n=>n.id===id);
+      if(kind==='knowledge'&&old){const similarity=knowledgeSimilarity(old.body,body);entry.similarityDecisions||=[];entry.similarityDecisions.push({existingId:old.id,similarity,threshold:KNOWLEDGE_SIMILARITY_THRESHOLD,action:similarity>=KNOWLEDGE_SIMILARITY_THRESHOLD?'reuse':'separate'});entry.similarityDecisions=entry.similarityDecisions.slice(-100);if(similarity<KNOWLEDGE_SIMILARITY_THRESHOLD){id=canonical(kind,source.id+'|'+item.key+'|'+hash(normalizedKnowledge(body)));old=this.store.nodes.find(n=>n.id===id);}}
+      if(kind==='skill'&&old?.methodPolicy?.status==='user-confirmed'&&(extra.methodPolicy?.status!=='user-confirmed'||extra.methodPolicy.scope!==old.methodPolicy.scope||extra.methodPolicy.limitations!==old.methodPolicy.limitations||extra.methodPolicy.recognitionTarget!==old.methodPolicy.recognitionTarget)){id=canonical(kind,item.key+'|'+source.id+'|'+hash(JSON.stringify([extra.methodPolicy?.status,extra.methodPolicy?.scope,extra.methodPolicy?.limitations,extra.methodPolicy?.recognitionTarget])));old=this.store.nodes.find(n=>n.id===id);}
       const previous=(old?.sources||[]).filter(s=>this.store.sourceQuoteValid(s));
       const merged=[...new Map([...previous,...sources].map(s=>[s.id+'|'+s.quote,s])).values()];
       if(old&&this.store.state.manualEdits?.[id]){
@@ -376,15 +409,14 @@ export class AutoAnalyzer {
         entry.issues.push({segment:part.start,text:'保留人工修正正文，仅补充有效来源；自动建议未覆盖人工内容。'});
         return node;
       }
-      const supplement=analysisLanguage(body)==='zh'?'自动补充（保留原有内容）':'Additional analysis (previous content preserved)';
-      let combined=kind==='skill'?body:old&&!old.body.includes(body)?old.body+'\n\n## '+supplement+'\n\n'+body:old?.body||body;
+      let combined=kind==='skill'?body:(old?.body||body).replace(/^# [^\n]+/, '# '+item.title);
       if(kind==='skill'&&old&&!old.analysisNeedsReview&&['涉及','实践','验证'].indexOf(old.level)>['涉及','实践','验证'].indexOf(extra.level)){
         extra.level=old.level;
         combined+='\n\n'+(analysisLanguage(body)==='zh'?'既有来源中的程度证据仍保留，当前新增材料不构成新的独立验证。':'Existing level evidence remains in the source chain; this addition is not new independent verification.');
       }
       const node=this.store.upsert({id,kind,title:item.title,body:combined,sources:merged,expectedHash:old?.hash,decision:old?'补充':'新增',...extra});
       references.set(item.key,id);references.set(id,id);remember(id);
-      if(node.classification?.method!=='manual')this.store.classify({id,summary:item.body.slice(0,800),tags:[{name:item.category.slice(0,40),reason:item.categoryReason,quote:item.body.slice(0,120)}],
+      if(node.classification?.method!=='manual')this.store.classify({id,summary:item.body.slice(0,800),tags:[{name:item.category.slice(0,40),reason:item.categoryReason,quote:node.body.slice(0,120)}],
         expectedHash:node.classificationHash,sourceHash:node.hash,method:'codex'});
       if(item.mainTags?.length)this.applyMainTagUpdates([{id,mainTags:item.mainTags,reviewReason:''}],[{id,hash:node.hash}],true);
       return node;
@@ -402,7 +434,8 @@ export class AutoAnalyzer {
       if(!sources.length)throw new Error('技能缺少已保存的知识点');
       const body=analysisLanguage(s.body)==='en'?`# ${s.title}\n\n## Capability\n\n${s.body}\n\n## Level and limits\n\n${s.level==='实践'?'The source contains self-reported practice, not independent verification.':'The material mentions this capability; it does not establish proficiency or verification.'}\n\n${s.practiceQuote||''}`:
         `# ${s.title}\n\n## 能做什么\n\n${s.body}\n\n## 程度与边界\n\n${s.level==='实践'?'原文含用户自述实践，不等于独立验证。':'材料只支持涉及该能力，不代表已掌握或已验证。'}\n\n${s.practiceQuote||''}`;
-      upsert('skill',s,sources,body,{level:s.level,domain:s.category});
+      const methodPolicy=skillMethodPolicy({scope:s.methodScope||'',limitations:s.methodLimitations||'',declaredOrigin:s.methodOrigin||'unknown',recognitionKind:s.methodRecognition?.kind||'unconfirmed',recognitionQuote:s.methodRecognition?.quote||'',recognitionTarget:s.methodRecognition?.target||'',sourceId:source.id,sourceHash:source.hash,readRange:{start:part.start,end:part.end}},source,body);
+      upsert('skill',s,sources,body,{level:s.level,domain:s.category,methodPolicy});
     }
     const relation=(e,from,to,sources)=>{
       if(!from||!to||from===to)throw new Error('无效关系端点');

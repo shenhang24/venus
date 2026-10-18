@@ -22,7 +22,7 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
     const members=nodes.filter(node=>mainTagNames(node).includes(name));
     const connectionCount=new Set(members.map(node=>node.id)).size;
     cores.push({id,title:name,isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
-    seeds[id]||=centered?[0,0,0]:[Math.cos(angle)*spacing*7,Math.sin(angle*2.3)*spacing*3,Math.sin(angle)*spacing*7];
+    if(centered)seeds[id]=[0,0,0];else seeds[id]||=[Math.cos(angle)*spacing*7,Math.sin(angle*2.3)*spacing*3,Math.sin(angle)*spacing*7];
     for(const node of members){
       const evidence=node.mainTags.find(tag=>tag.name===name);
       anchors.push({id:'@anchor:'+id+':'+node.id,from:id,to:node.id,type:'@semantic',strength:1,semanticAnchor:true,membershipLink:true,mainTag:name,summary:evidence.reason,reason:evidence.reason,sources:[{id:node.id,quote:evidence.quote}]});
@@ -30,7 +30,9 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
   }
   const coreIds=new Set(cores.map(core=>core.id));
   const contentEdges=edges.filter(edge=>!(coreIds.has(edge.from)&&coreIds.has(edge.to)));
-  return {nodes:[...cores,...nodes],edges:[...contentEdges,...anchors],positions:seeds};
+  const allEdges=[...contentEdges,...anchors],connections=effectiveDegrees(allEdges);
+  for(const core of cores)core.relationConnectionCount=connections[core.id]||0;
+  return {nodes:[...cores,...nodes],edges:allEdges,positions:seeds};
 }
 import {tr} from './i18n.js';
 

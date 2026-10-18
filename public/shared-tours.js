@@ -1,6 +1,35 @@
 const TOUR_SURFACE_GAP = .02;
 const length=a=>Math.hypot(...a);
 const minus=(a,b)=>a.map((x,k)=>x-b[k]);
+// Hermite endpoints preserve position and first derivative at channel joins.
+export function transferHermite(a,va,b,vb,t,duration){
+  const h00=2*t*t*t-3*t*t+1,h10=t*t*t-2*t*t+t,h01=-2*t*t*t+3*t*t,h11=t*t*t-t*t;
+  return a.map((x,k)=>h00*x+h10*duration*va[k]+h01*b[k]+h11*duration*vb[k]);
+}
+export function createExteriorTransfer({start,velocity,center,frame,radius,angle=0,duration=240}){
+  const offset=minus(start,center),phase=Math.atan2(offset.reduce((s,x,k)=>s+x*frame.v[k],0),offset.reduce((s,x,k)=>s+x*frame.u[k],0));
+  return {start:[...start],velocity:[...velocity],center:[...center],frame,radius,phase,angle,duration,lapDuration:600,elapsed:0};
+}
+export function exteriorTransferPoint(route,elapsed,destination,destinationVelocity){
+  const {center,frame,radius,phase,duration,lapDuration}=route,omega=Math.PI*2/lapDuration;
+  const circle=a=>center.map((x,k)=>x+radius*(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a)));
+  const tangent=a=>frame.u.map((x,k)=>radius*omega*(-x*Math.sin(a)+frame.v[k]*Math.cos(a)));
+  if(elapsed<=duration)return transferHermite(route.start,route.velocity,circle(phase),tangent(phase),elapsed/duration,duration);
+  if(elapsed<=duration+lapDuration)return circle(phase+omega*(elapsed-duration));
+  const local=Math.min(duration,elapsed-duration-lapDuration),remaining=duration-local;
+  // Predict the moving docking endpoint, rather than chasing its old position.
+  const predicted=destination.map((x,k)=>x+destinationVelocity[k]*remaining);
+  return transferHermite(circle(phase+Math.PI*2),tangent(phase+Math.PI*2),predicted,destinationVelocity,local/duration,duration);
+}
+function beginExteriorTransfer(layout,g,start,velocity){
+  layout.exteriorLaneRanks||=new Map();if(!layout.exteriorLaneRanks.has(g.id))layout.exteriorLaneRanks.set(g.id,layout.exteriorLaneRanks.size);
+  const center=layout.positions[layout.coreId]||layout.center||[0,0,0],moving=new Set(layout.sharedOrbits.flatMap(group=>group.memberIndices));
+  let bound=0;for(let i=0;i<layout.nodes.length;i++)if(!moving.has(i))bound=Math.max(bound,length(minus(layout.positions[layout.nodes[i].id],center))+layout.systemExtents[i]);
+  // Bounds are read only: animation channels never become satellite reach or packing envelopes.
+  const extent=Math.max(...layout.sharedOrbits.map(group=>layout.systemExtents[group.index])),lane=layout.exteriorLaneRanks.get(g.id);
+  const radius=bound+(lane+1)*(2*extent+TOUR_SURFACE_GAP)+extent;
+  return createExteriorTransfer({start,velocity,center,frame:g.visits[0].frame,radius,angle:g.tour.angle});
+}
 // The entire moving subtree must remain inside its owner's orbital territory.
 // A transfer is allowed only when that territory also contains the route.
 export function insideSatelliteTerritory(layout,group,position){
@@ -18,7 +47,7 @@ export function insideSatelliteTerritory(layout,group,position){
 }
 const point=(layout,visit,angle)=>layout.positions[visit.host].map((x,k)=>x+visit.radius*(visit.frame.u[k]*Math.cos(visit.phase+angle)+visit.frame.v[k]*Math.sin(visit.phase+angle)));
 
-export function configureSharedTours(layout,frameOf){
+export function configureSharedTours(layout,frameOf,slotOf){
   layout.sharedTours||=new Map();
   const groups=layout.sharedOrbits,byHost=new Map();
   for(const group of groups){
@@ -28,16 +57,22 @@ export function configureSharedTours(layout,frameOf){
     }
   }
   for(const [host,visitors]of byHost){
-    visitors.sort((a,b)=>a.id.localeCompare(b.id));
+    layout.sharedVisitSlots||=new Map();if(!layout.sharedVisitSlots.has(layout.nodes[host].id))layout.sharedVisitSlots.set(layout.nodes[host].id,new Map());
+    const ranks=layout.sharedVisitSlots.get(layout.nodes[host].id),used=new Set(visitors.filter(g=>ranks.has(g.id)).map(g=>ranks.get(g.id)));
+    for(const g of [...visitors].sort((a,b)=>a.id.localeCompare(b.id)))if(!ranks.has(g.id)){let rank=0;while(used.has(rank))rank++;ranks.set(g.id,rank);used.add(rank);}
+    visitors.sort((a,b)=>ranks.get(a.id)-ranks.get(b.id));
     const base=layout.systemExtents[host],maxExtent=Math.max(...visitors.map(g=>layout.systemExtents[g.index])),size=Math.max(layout.subtreeMaxRadius[host],...visitors.map(g=>layout.subtreeMaxRadius[g.index]));
     let previous=base+maxExtent+TOUR_SURFACE_GAP;
-    for(let rank=0;rank<visitors.length;rank++){
-      const shell=Math.floor((Math.sqrt(1+4*rank/3)-1)/2),start=3*shell*(shell+1),slots=6*(shell+1);
+    let lastShell=-1,lastRadius=previous;
+    for(const visitor of visitors){
+      const {row:shell,slot,capacity:slots,page}=slotOf(ranks.get(visitor.id),layout.nodes[host].kind);
+      if(lastShell!==-1&&shell!==lastShell)previous=lastRadius+2*maxExtent+TOUR_SURFACE_GAP;
       // The straight segment between animation frames cuts slightly inside a
       // circle; reserve that chord sagitta without restoring a large gap.
-      const radius=Math.max(previous,(2*maxExtent+TOUR_SURFACE_GAP)/(2*Math.sin(Math.PI/slots)))*1.001;
-      visitors[rank].visits.push({host:layout.nodes[host].id,radius,phase:(rank-start)*Math.PI*2/slots,frame:frameOf(layout.membershipPlaneKeys.get(visitors[rank].id)||layout.nodes[host].id+':visits')});
-      if(rank===start+slots-1)previous=radius+2*maxExtent+TOUR_SURFACE_GAP;
+      const radius=Math.max(previous,5*layout.collisionRadii[host]+maxExtent+TOUR_SURFACE_GAP,(slots>1?(2*maxExtent+TOUR_SURFACE_GAP)/(2*Math.sin(Math.PI/slots)):0))*1.001;
+      const basePlane=layout.membershipPlaneKeys.get(visitor.id)||layout.nodes[host].id+':visits';
+      visitor.visits.push({host:layout.nodes[host].id,radius,globalRow:shell,capacity:slots,phase:slot*Math.PI*2/slots,frame:frameOf(page?basePlane+':capacity-plane:'+page:basePlane)});
+      lastShell=shell;lastRadius=radius;
       layout.systemExtents[host]=Math.max(layout.systemExtents[host],radius+maxExtent);
     }
     layout.subtreeMaxRadius[host]=size;
@@ -93,7 +128,7 @@ export function advanceSharedTours(layout){
   if(!layout.sharedOrbits.length)return;
   let active=layout.sharedOrbits.filter(g=>g.tour.stage!=='idle').length;
   for(const g of [...layout.sharedOrbits].filter(g=>g.tour.stage==='idle').sort((a,b)=>a.tour.lastStarted-b.tour.lastStarted||a.id.localeCompare(b.id))){
-    if(active>=12)break;const s=g.tour;s.stage='approach';s.index=Math.max(0,g.visits.findIndex(v=>v.host===layout.orbits[g.id].host));s.angle=0;s.progress=0;s.roundVisits=0;s.lastStarted=layout.tourDispatchCounter=(layout.tourDispatchCounter||0)+1;active++;
+    if(active>=12)break;const s=g.tour;s.stage='approach';s.index=Math.max(0,g.visits.findIndex(v=>v.host===layout.orbits[g.id].host));s.orbitStartAngle=s.angle;s.progress=0;s.roundVisits=0;s.lastStarted=layout.tourDispatchCounter=(layout.tourDispatchCounter||0)+1;active++;
   }
   const moving=new Set(layout.sharedOrbits.flatMap(g=>g.memberIndices)),entries=[];
   layout.tourObstaclePrevious||=new Map();
@@ -107,32 +142,41 @@ export function advanceSharedTours(layout){
     const s=g.tour,visit=g.visits[s.index],radius=layout.systemExtents[g.index],size=layout.subtreeMaxRadius[g.index],original=[...layout.positions[g.id]];
     if(s.stage==='idle')continue;
     let start=s.world||original,goal,nextAngle=s.angle,nextProgress=s.progress;
-    if(!insideSatelliteTerritory(layout,g,start)){start=original;s.world=null;s.stage='approach';s.progress=0;}
+    if(s.stage!=='transfer'&&!insideSatelliteTerritory(layout,g,start)){start=original;s.world=null;s.stage='approach';s.progress=0;}
     occupancy.remove(g.id);
-    if(occupancy.blocked(start,start,radius,size)){const recovered=occupancy.recover(start,radius,size);if(insideSatelliteTerritory(layout,g,recovered))start=recovered;}
-    if(s.stage==='orbit'){nextAngle=Math.min(Math.PI*2,s.angle+.012);goal=point(layout,visit,nextAngle);}
+    if(s.stage!=='transfer'&&occupancy.blocked(start,start,radius,size)){const recovered=occupancy.recover(start,radius,size);if(insideSatelliteTerritory(layout,g,recovered))start=recovered;}
+    if(s.stage==='orbit'){nextAngle=s.angle+.012;goal=point(layout,visit,nextAngle);}
     else if(s.stage==='transfer'){
-      const destination=g.visits[(s.index+1)%g.visits.length],a=point(layout,visit,Math.PI*2),b=point(layout,destination,0);
-      nextProgress=Math.min(1,s.progress+1/180);const t=nextProgress*nextProgress*(3-2*nextProgress),height=length(minus(b,a))*.3+radius*8;
-      goal=a.map((x,k)=>x*(1-t)+b[k]*t+g.arc[k]*height*Math.sin(Math.PI*t)**2);
-    }else goal=s.stage==='home'?original:point(layout,visit,0);
+      s.exterior||=beginExteriorTransfer(layout,g,start,s.worldVelocity||layout.velocities[g.id]||[0,0,0]);
+      const route=s.exterior,destination=g.visits[(s.index+1)%g.visits.length],total=2*route.duration+route.lapDuration;
+      nextProgress=Math.min(total,route.elapsed+1);nextAngle=route.angle+nextProgress*.012;
+      const a=destination.phase+nextAngle,b=point(layout,destination,nextAngle),velocity=destination.frame.u.map((x,k)=>(layout.velocities[destination.host]?.[k]||0)+destination.radius*.012*(-x*Math.sin(a)+destination.frame.v[k]*Math.cos(a)));
+      goal=exteriorTransferPoint(route,nextProgress,b,velocity);
+    }else goal=s.stage==='home'?original:point(layout,visit,s.angle);
     const nextVisit=g.visits[(s.index+1)%g.visits.length],hostMotion=Math.max(length(layout.velocities[visit.host]||[0,0,0]),length(layout.velocities[nextVisit.host]||[0,0,0]));
-    const delta=minus(goal,start),distance=length(delta),maxStep=Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
-    const within=p=>length(minus(p,layout.center||[0,0,0]))<=layout.tourWorldBound&&insideSatelliteTerritory(layout,g,p);
-    let candidate=start.map((x,k)=>x+delta[k]*Math.min(1,maxStep/(distance||1))),accepted=within(candidate)&&!occupancy.blocked(start,candidate,radius,size);
+    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Math.max(.01,s.exterior.radius*.025,length(s.exterior.velocity)*1.1):Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
+    const within=p=>s.stage==='transfer'||length(minus(p,layout.center||[0,0,0]))<=layout.tourWorldBound&&insideSatelliteTerritory(layout,g,p)&&(!['orbit','approach'].includes(s.stage)||length(minus(p,layout.positions[visit.host]))>=layout.orbitalClearance(g.index,layout.nodeIndices.get(visit.host))-1e-7);
+    const angleAt=p=>{const d=minus(p,layout.positions[visit.host]);return Math.atan2(d.reduce((sum,x,k)=>sum+x*visit.frame.v[k],0),d.reduce((sum,x,k)=>sum+x*visit.frame.u[k],0));};
+    const startAngle=angleAt(s.lastRenderedWorld&&s.lastRenderedHost===visit.host&&s.lastRenderedHostPosition?s.lastRenderedWorld.map((x,k)=>x+layout.positions[visit.host][k]-s.lastRenderedHostPosition[k]):start);
+    const forward=p=>s.stage!=='orbit'||Math.atan2(Math.sin(angleAt(p)-startAngle),Math.cos(angleAt(p)-startAngle))>=-1e-7;
+    const clear=p=>within(p)&&forward(p)&&!occupancy.blocked(start,p,radius,size);
+    let candidate=start.map((x,k)=>x+delta[k]*Math.min(1,maxStep/(distance||1))),accepted=clear(candidate);const goalClear=accepted;
+    if(s.detourDirection&&accepted){s.clearFrames=(s.clearFrames||0)+1;if(s.clearFrames<3)accepted=false;else{s.detourDirection=null;s.clearFrames=0;}}
     if(!accepted){
-      // Go round a blocked corridor, keeping bounded continuous steps; otherwise wait.
-      const directions=[g.arc,g.arc.map(x=>-x),visit.frame.u,visit.frame.u.map(x=>-x),visit.frame.v,visit.frame.v.map(x=>-x)];
-      for(const direction of directions){const trial=start.map((x,k)=>x+direction[k]*maxStep);if(within(trial)&&!occupancy.blocked(start,trial,radius,size)){candidate=trial;accepted=true;break;}}
+      if(!goalClear)s.clearFrames=0;
+      const tangent=visit.frame.u.map((x,k)=>-x*Math.sin(startAngle)+visit.frame.v[k]*Math.cos(startAngle)),radial=visit.frame.u.map((x,k)=>x*Math.cos(startAngle)+visit.frame.v[k]*Math.sin(startAngle));
+      const directions=[...(s.detourDirection?[s.detourDirection]:[]),tangent,tangent.map((x,k)=>x+radial[k]*.6),tangent.map((x,k)=>x+visit.frame.normal[k]*.6),tangent.map((x,k)=>x-visit.frame.normal[k]*.6),g.arc,g.arc.map(x=>-x)];
+      for(const direction of directions){const l=length(direction)||1,unit=direction.map(x=>x/l),trial=start.map((x,k)=>x+unit[k]*maxStep);if(clear(trial)){candidate=trial;accepted=true;s.detourDirection=unit;break;}}
     }
     if(!accepted)candidate=start;
-    s.blocked=!accepted;s.world=candidate;
+    s.blocked=!accepted;s.world=candidate;s.worldVelocity=minus(candidate,start);s.lastRenderedWorld=[...candidate];s.lastRenderedHost=visit.host;s.lastRenderedHostPosition=[...layout.positions[visit.host]];
+    const wasOrbit=s.stage==='orbit';
+    if(wasOrbit&&accepted){const progress=Math.max(0,Math.atan2(Math.sin(angleAt(candidate)-startAngle),Math.cos(angleAt(candidate)-startAngle)));s.angle+=progress;if(s.angle-(s.orbitStartAngle||0)>=Math.PI*2-1e-8){s.completed.push(visit.host);s.roundVisits++;s.completed=s.completed.slice(-g.visits.length*3);s.stage='transfer';s.exterior=beginExteriorTransfer(layout,g,candidate,s.worldVelocity);s.progress=0;}}
     const arrived=length(minus(candidate,goal))<1e-5;
-    if(arrived){
-      if(s.stage==='approach'){s.stage='orbit';s.angle=0;}
-      else if(s.stage==='orbit'){s.angle=nextAngle;if(s.angle>=Math.PI*2){s.completed.push(visit.host);s.roundVisits++;s.completed=s.completed.slice(-g.visits.length*3);s.stage='transfer';s.progress=0;}}
+    if(arrived&&!wasOrbit){
+      if(s.stage==='approach'){s.stage='orbit';s.orbitStartAngle=s.angle;}
       else if(s.stage==='home'){s.stage='idle';s.world=null;}
-      else{s.progress=nextProgress;if(s.progress>=1){s.index=(s.index+1)%g.visits.length;s.angle=0;s.stage=s.roundVisits>=g.visits.length?'home':'orbit';s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
+      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
     }
     const shift=minus(candidate,original);
     for(const i of g.memberIndices){const id=layout.nodes[i].id;layout.positions[id]=layout.positions[id].map((x,k)=>x+shift[k]);}

@@ -40,3 +40,17 @@ export function followSelectedPosition(camera, controls, position, previous) {
   }
   return next;
 }
+
+
+export function relationDisplayTypes(types){return [...types.filter(t=>t.id!=='@semantic'),{id:'@semantic',name:'主分类归属',color:'#8a9aac',membershipLink:true}];}
+export function createRelationVisibility(storage=null){
+  const key='venus-relation-visibility-v2';let selected=new Set();
+  try{const saved=JSON.parse(storage?.getItem(key)||'null');if(saved?.version===2&&Array.isArray(saved.selected))selected=new Set(saved.selected.filter(id=>typeof id==='string'));}catch{}
+  const save=()=>{try{storage?.setItem(key,JSON.stringify({version:2,selected:[...selected]}));}catch{}};
+  save();return {selected,hiddenFor:types=>new Set(relationDisplayTypes(types).filter(t=>!selected.has(t.id)).map(t=>t.id)),set(id,checked){if(checked)selected.add(id);else selected.delete(id);save();},selectAll(types){for(const t of relationDisplayTypes(types))selected.add(t.id);save();}};
+}
+
+export function nodeFocusRegion(options){
+  const anchor=options.nodes.find(n=>n.id===options.nodeId);if(!anchor)return null;
+  return mainTagRegion({...options,nodes:[{...anchor,isMainTag:true,mainTag:anchor.id},...options.nodes.filter(n=>n.id!==anchor.id)],mainTag:anchor.id});
+}

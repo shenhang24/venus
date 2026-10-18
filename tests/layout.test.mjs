@@ -37,25 +37,18 @@ test('mass-tree gravity stays close to direct summation for a large graph',()=>{
   assert.ok(error<.03,JSON.stringify({error}));
 });
 
-test('binary domains respect current sphere clearance and barycentre across all network kinds',()=>{
-  for(const kind of ['vault','knowledge','skill']){
-    const l=new AffinityLayout(),nodes=[{id:'a',kind,isMainTag:true,domainConnectionCount:100},{id:'b',kind,isMainTag:true,domainConnectionCount:90}];
-    l.sync({nodes,edges:[],seeds:{a:[0,0,0],b:[0,0,0]}});assert.equal(l.companionId,'b');assert.deepEqual(Object.values(l.bodyRoles),['star','star']);
-    assert.ok(Math.abs(l.stellarMinimum(0,1)-l.collisionRadii[0]-l.collisionRadii[1]-.02)<1e-9);
-    l.step();const center=[...l.focalPosition()],before=structuredClone(l.positions);
-    for(let i=0;i<100;i++)l.step();
-    assert.ok(distance(l.focalPosition(),center)<1e-6);assert.ok(distance(l.positions.a,before.a)>.001);assert.ok(distance(l.positions.b,before.b)>.001);
-    assert.ok(distance(l.positions.a,l.positions.b)>=l.collisionRadii[0]+l.collisionRadii[1]);
-  }
+test('all network kinds retain one primary and orbit lesser centres',()=>{
+ for(const kind of ['vault','knowledge','skill']){const l=new AffinityLayout(),nodes=[{id:'a',kind,isMainTag:true,domainConnectionCount:100},{id:'b',kind,isMainTag:true,domainConnectionCount:90}];l.sync({nodes,edges:[]});assert.equal(l.companionId,null);assert.deepEqual([...l.starIds],['a']);l.step();const before=structuredClone(l.positions);for(let i=0;i<100;i++)l.step();assert.deepEqual(l.positions.a,before.a);assert.ok(distance(l.positions.b,before.b)>.001);assert.ok(distance(l.positions.a,l.positions.b)>=l.orbitalClearance(1,0));}
 });
 
-test('nine planetary bands hold eight labels per orbit with distinct initial positions',()=>{
+test('planetary bands follow Fibonacci capacities with distinct initial positions',()=>{
   const l=new AffinityLayout(),nodes=Array.from({length:73},(_,i)=>({id:'label'+String(i).padStart(2,'0'),isMainTag:true,domainConnectionCount:i===0?1000:100-i}));
   l.sync({nodes,edges:[],seeds:Object.fromEntries(nodes.map(n=>[n.id,[0,0,0]]))});
   const planets=Object.values(l.orbits).filter(o=>o.kind==='planet'),rings=new Map();
   for(const o of planets){if(!rings.has(o.ring))rings.set(o.ring,[]);rings.get(o.ring).push(o);}
   assert.equal(planets.length,72);assert.equal(rings.size,9);
-  for(const group of rings.values()){assert.equal(group.length,8);assert.equal(new Set(group.map(o=>o.slot)).size,8);assert.equal(new Set(group.map(o=>o.targetRadius)).size,1);}
+  assert.deepEqual([...rings.values()].map(g=>g.length),[1,1,2,3,5,8,13,21,18]);
+  for(const group of rings.values()){assert.equal(new Set(group.map(o=>o.slot)).size,group.length);assert.equal(new Set(group.map(o=>o.targetRadius)).size,1);}
   l.step();assert.equal(new Set(nodes.map(n=>JSON.stringify(l.positions[n.id]))).size,73);
   for(const n of nodes)assert.ok(l.positions[n.id].every(Number.isFinite));
 });
@@ -120,11 +113,11 @@ test('visible source knowledge keeps its derived material nearby without changin
   assert.equal(JSON.stringify({nodes,edges}),original);assert.equal(l.nodes.length,4);
 });
 
-test('binary and triple visual groups ignore injected escape velocities and do not run force integration',()=>{
+test('single-primary visual groups ignore injected escape velocities and do not run force integration',()=>{
   for(const count of [2,3]){
     const l=new AffinityLayout(),nodes=[...Array.from({length:count},(_,i)=>({id:'star'+i,isMainTag:true,domainConnectionCount:100-i*5})),{id:'p',isMainTag:true,domainConnectionCount:20},{id:'moon'}];
     l.sync({nodes,edges:[{from:'p',to:'moon',membershipLink:true,strength:1}]});
-    assert.equal(l.starIds.size,count);l.systemGravity=()=>{throw Error('N-body integration must not run in display mode');};
+    assert.equal(l.starIds.size,1);l.systemGravity=()=>{throw Error('N-body integration must not run in display mode');};
     const center=[...l.center];
     for(let t=0;t<200;t++){
       for(const n of nodes)l.velocities[n.id]=[1e9,-1e9,1e9];
@@ -218,7 +211,7 @@ test('satellite shells pack individual subtrees safely and remain local to their
   const l=new AffinityLayout(),planets=Array.from({length:9},(_,i)=>({id:'p'+i,kind:'knowledge'})),nodes=[{id:'sun',isMainTag:true,domainConnectionCount:20},...planets,{id:'moon',kind:'knowledge'}];
   const edges=[...planets.map(n=>({from:'sun',to:n.id,membershipLink:true,strength:1})),{from:'p0',to:'moon',type:'contains',strength:1,sources:[{quote:'contains'}]}];
   l.sync({nodes,edges});const radii=planets.map(n=>l.orbits[n.id].targetRadius);
-  assert.ok(radii.slice(1,6).some(r=>r<radii[0]));assert.ok(radii[6]>Math.min(...radii.slice(0,6)));
+  assert.equal(l.orbits.p0.globalRow,0);assert.equal(l.orbits.p1.globalRow,1);assert.equal(l.orbits.p2.globalRow,2);assert.ok(radii[1]>radii[0]);assert.ok(radii[6]>radii[1]);
   assert.ok(l.orbits.moon.targetRadius<radii[0]);
   assert.ok(radii[0]<l.collisionRadii[0]+l.collisionRadii[1]+10*l.collisionRadii[0]);
   l.step();assert.ok(Math.abs(distance(l.positions.p0,l.positions.sun)-radii[0])<radii[0]*.1);
@@ -365,7 +358,7 @@ test('external stars carry the whole system while differential tidal pull is red
   const tidalFull=full[2][0]-full[0][0]-(local[1][0]-local[0][0]);
   const tidalReduced=reduced[2][0]-reduced[0][0]-(local[1][0]-local[0][0]);
   assert.ok(Math.abs(tidalReduced/tidalFull-.18)<1e-7);
-  assert.ok(Math.abs(l.orbitalClearance(2,0)-l.collisionRadii[2]-l.collisionRadii[0]-.02)<1e-9);
+  assert.ok(Math.abs(l.orbitalClearance(2,0)-l.collisionRadii[2]-5*l.collisionRadii[0])<1e-9);
 });
 
 test('local centres use stable independent 3D orbital planes without axial spin',()=>{

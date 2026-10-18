@@ -1,0 +1,23 @@
+name: Publish versioned source package
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the public allowlist
+        run: python3 scripts/package-release.py
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          "dist/Venus-${GITHUB_REF_NAME#v}-source.zip"
+          "dist/Venus-English-Screenshots.zip"
+          --verify-tag --target "$GITHUB_SHA"
+          --title "Venus ${GITHUB_REF_NAME#v}"
+          --notes-file RELEASE-NOTES.md

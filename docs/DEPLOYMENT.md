@@ -152,6 +152,8 @@ After updating source, install the matching lockfile dependencies with npm ci an
 | Closing the window did not stop processing | The browser window and backend are separate. Use the application shutdown control when running through the supervisor. |
 | A summary, tag or relationship is wrong | Correct it in the supported manual controls. Investigate storage, display or interface faults as software issues rather than attributing every defect to model judgment. |
 
-## Publication status
+## Release package
 
-This document does not turn the preparation copy into a validated release. The user manually removed the temporary dependency/cache directories. A separate read-only check of the 72 manifest-selected files found no matches for the checked secret, private-path or project-identifier patterns; the only match was the documented placeholder <YOUR_TUNNEL_ID>. This is a bounded pattern check, not a complete security audit. The candidate file list is PUBLIC-FILES.json. A fresh local Git repository was initialized for the allowlisted staged files. No remote repository or upload was created. The three user-supplied approved actual app screenshots are included unchanged in docs/images. The private Chinese draft and compatibility README pointer are excluded from the public documentation selection and must remain excluded from future publication/tracking.
+Version 0.4.0 includes the program, deployment files, locked dependency definitions, synthetic examples, templates, targeted tests, retained dependency notices and English synthetic-demo screenshots. Install dependencies with npm ci before starting. No private data, credentials, remote tunnel profiles or background analysis allowance is bundled. Existing private data must stay outside public version control.
+
+Optional tunnel controller source uses YOUR_TUNNEL_ID as an unconfigured placeholder. A compatible client and the user's own profile are separate prerequisites; cloud connectivity has not been verified by this release. Local retrieval does not require a tunnel.

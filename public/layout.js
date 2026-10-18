@@ -1,5 +1,6 @@
 // Geometry is inferred only from recorded relations and their shared neighbours.
 import {configureSharedTours,advanceSharedTours} from './shared-tours.js';
+import {resolveBodyAvoidance} from './body-avoidance.js';
 // Relation types and their independent evidence are never merged in storage.
 export const BASE_ANIMATION_SPEED = 2;
 export const SPIN_SPEED_MULTIPLIER = 0;
@@ -7,6 +8,7 @@ export const SPIN_SPEED_MULTIPLIER = 0;
 export const GROUP_DISTANCE_SCALE = .25;
 export const LOCAL_ORBIT_DISTANCE_SCALE = .25;
 export const SURFACE_GAP = .02;
+export const LOCAL_ROW_REACH_MULTIPLIER = 1.15;
 export function nodeRadiusFactor(main,count,growth=.01){
   const grown=1+Math.max(0,count||0)*growth;
   return main?Math.min(Math.cbrt(10),1.4*grown):grown;
@@ -26,6 +28,16 @@ export function orbitalFrame(id){
 }
 
 export const KNOWLEDGE_LAYERS_PER_PLANE = 9;
+export function fibonacciOrbitSlot(rank){
+  let row=0,start=0,capacity=1,next=1;
+  while(rank-start>=capacity){start+=capacity;[capacity,next]=[next,capacity+next];row++;}
+  return {row,capacity,slot:rank-start,page:Math.floor(row/KNOWLEDGE_LAYERS_PER_PLANE),layer:row%KNOWLEDGE_LAYERS_PER_PLANE};
+}
+export function satelliteOrbitSlot(rank,kind){
+  if(kind!=='knowledge')return fibonacciOrbitSlot(rank);
+  const page=Math.floor(rank/270),local=rank%270,layer=Math.floor((Math.sqrt(1+4*local/3)-1)/2),capacity=6*(layer+1),slot=local-3*layer*(layer+1);
+  return {row:page*9+layer,capacity,slot,page,layer};
+}
 // Minimum distance over a shared angular period, including differently tilted planes.
 export function orbitSweepDistance(a,ra,b,rb){
  const basis=o=>o.sweepBasis||(o.sweepBasis={c:o.frame.u.map((x,k)=>x*Math.cos(o.phase)+o.frame.v[k]*Math.sin(o.phase)),s:o.frame.u.map((x,k)=>-x*Math.sin(o.phase)+o.frame.v[k]*Math.cos(o.phase))});
@@ -84,11 +96,12 @@ export class AffinityLayout {
   sync({ nodes, edges, seeds = {}, spacing = 30, growth = .01,baseRadius=2 }) {
     this.spacing = spacing;
     const signature = JSON.stringify([
-      nodes.map((n) => [n.id,!!n.isMainTag,n.domainConnectionCount,(n.sources||[]).map(s=>s.id).sort()]).sort(),
+      nodes.map((n) => [n.id,!!n.isMainTag,n.domainConnectionCount,n.relationConnectionCount,(n.sources||[]).map(s=>s.id).sort()]).sort(),
       edges.map((e) => [e.from, e.to, e.type, e.strength,e.dimensions?.orbitParent,!!e.sources?.some(s=>s.quote?.trim())]).sort(),
       spacing,growth,baseRadius,
     ]);
     if (signature === this.signature) return;
+    const previousOrbits=this.orbits||{},previousFree=this.freeOrbits||new Map(),previousCore=this.coreId,previousRanks=new Map(this.stablePlanetSlots||[]);
     this.signature = signature;
     this.nodes = nodes;
     const degrees=new Map(nodes.map(n=>[n.id,new Set()]));
@@ -173,12 +186,20 @@ export class AffinityLayout {
       }
     for(const n of nodes)this.restPositions[n.id]||=[...this.positions[n.id]];
     const cores=nodes.map((n,i)=>({node:n,mass:this.masses[i]})).filter(({node})=>node.isMainTag);
-    cores.sort((a,b)=>(b.node.domainConnectionCount||0)-(a.node.domainConnectionCount||0)||b.mass-a.mass||(a.node.id===this.coreId?-1:b.node.id===this.coreId?1:a.node.id.localeCompare(b.node.id)));
+    const connectionCount=n=>n.relationConnectionCount??n.domainConnectionCount??degrees.get(n.id)?.size??0;
+    cores.sort((a,b)=>connectionCount(b.node)-connectionCount(a.node)||(a.node.id===previousCore?-1:b.node.id===previousCore?1:0)||(previousRanks.get(a.node.id)?.rank??Infinity)-(previousRanks.get(b.node.id)?.rank??Infinity)||a.node.id.localeCompare(b.node.id));
     this.coreId=cores[0]?.node.id||null;
-    // Comparable leading domains form a binary; smaller domains stay planets.
-    this.companionId=cores[1]&&(cores[1].node.domainConnectionCount||0)>=10&&(cores[1].node.domainConnectionCount||0)>=(cores[0].node.domainConnectionCount||0)*.85?cores[1].node.id:null;
-    this.starIds=new Set(cores.slice(0,3).filter((c,i)=>i===0||((c.node.domainConnectionCount||0)>=10&&(c.node.domainConnectionCount||0)>=(cores[0].node.domainConnectionCount||0)*.85)).map(c=>c.node.id));
-    if(this.coreId&&!this.center)this.center=[...this.positions[this.coreId]];
+    const unifiedNetwork=true;
+    // All network views use a unique highest-connection primary.
+    this.companionId=!unifiedNetwork&&cores[1]&&(cores[1].node.domainConnectionCount||0)>=10&&(cores[1].node.domainConnectionCount||0)>=(cores[0].node.domainConnectionCount||0)*.85?cores[1].node.id:null;
+    this.starIds=new Set(cores.slice(0,3).filter((c,i)=>i===0||!unifiedNetwork&&((c.node.domainConnectionCount||0)>=10&&(c.node.domainConnectionCount||0)>=(cores[0].node.domainConnectionCount||0)*.85)).map(c=>c.node.id));
+    if(unifiedNetwork&&previousCore&&previousCore!==this.coreId&&this.steps>0&&this.positions[this.coreId]){
+      this.centerTarget=[...(this.centerTarget||this.center)];this.center=[...this.positions[this.coreId]];
+    }
+    if(this.coreId&&!this.center){
+      const origin=[...this.positions[this.coreId]];this.center=[0,0,0];
+      for(const n of nodes){this.positions[n.id]=this.positions[n.id].map((x,k)=>x-origin[k]);if(this.restPositions[n.id])this.restPositions[n.id]=this.restPositions[n.id].map((x,k)=>x-origin[k]);}
+    }
     if(!this.center&&nodes.length)this.center=[0,1,2].map(a=>nodes.reduce((sum,n)=>sum+this.positions[n.id][a],0)/nodes.length);
     this.eclipticY??=this.center?.[1]||0;
     const largestSize=Math.max(1,...this.masses.map(m=>Math.cbrt(m)));
@@ -228,32 +249,33 @@ export class AffinityLayout {
       const sourceKey=id=>(nodes[nodeIndex.get(id)].sources||[]).map(s=>s.id).sort().join('|');
       const planeKey=id=>this.membershipPlaneKeys.get(id)||nodes[host].id+':unclassified';
       children.sort((a,b)=>planeKey(a).localeCompare(planeKey(b))||sourceKey(a).localeCompare(sourceKey(b))||a.localeCompare(b));const axis=[0,1,0],norm=1;
-      let shell=0,shellRank=0,previousPlane=null,layer=0,page=0;
-      const knowledge=nodes[host].kind==='knowledge';
-      children.forEach((id,rank)=>{const i=nodeIndex.get(id),stellar=this.starIds.has(nodes[host].id);
-        const band=rank%SOLAR_ORBIT_AU.length,outerLayer=Math.floor(rank/SOLAR_ORBIT_AU.length),baseKey=planeKey(id);
-        if(knowledge){
-          if(previousPlane!==null&&baseKey!==previousPlane){shell++;shellRank=0;layer=0;page=0;}
-          else if(shellRank>=6*(layer+1)){shell++;shellRank=0;layer++;if(layer>=KNOWLEDGE_LAYERS_PER_PLANE){page++;layer=0;}}
-        }else if(shellRank>=6*(shell+1)||(previousPlane!==null&&baseKey!==previousPlane)){shell++;shellRank=0;}
-        previousPlane=baseKey;const slots=6*((knowledge?layer:shell)+1),slot=shellRank++,key=knowledge&&page?baseKey+':capacity-plane:'+page:baseKey;
-        const gap=stellar?this.collisionRadii[host]*(.8+1.2*Math.log1p(SOLAR_ORBIT_AU[band])+outerLayer*4.2):this.collisionRadii[host]*.15+this.collisionRadii[i]*(.45+2.4*(knowledge?layer:shell));
-        const radius=this.collisionRadii[host]+this.collisionRadii[i]+gap;
-        this.orbits[id]={host:nodes[host].id,localShell:shell,localSlots:slots,planeKey:key,...(knowledge?{knowledgePlane:true,planePage:page,radialLayer:layer}:{}),axis:axis.map(v=>v/norm),radius,targetRadius:radius,phase:slot*Math.PI*2/slots+(knowledge?layer*.2+page*.618:shell*.2),hostMass:this.masses[host]};});
+      this.stableOrbitSlots||=new Map();const used=new Map(),ordinal=new Map();
+      for(const id of children){const key='all',old=this.stableOrbitSlots.get(id);if(old?.host===nodes[host].id&&old.key===planeKey(id)&&!used.get(key)?.has(old.rank)){if(!used.has(key))used.set(key,new Set());used.get(key).add(old.rank);ordinal.set(id,old.rank);}}
+      for(const id of children)if(!ordinal.has(id)){const key='all';if(!used.has(key))used.set(key,new Set());const occupied=used.get(key);let rank=0;while(occupied.has(rank))rank++;occupied.add(rank);ordinal.set(id,rank);this.stableOrbitSlots.set(id,{host:nodes[host].id,key:planeKey(id),rank});}
+      this.stableOrbitShells||=new Map();if(!this.stableOrbitShells.has(nodes[host].id))this.stableOrbitShells.set(nodes[host].id,new Map());const shellIds=this.stableOrbitShells.get(nodes[host].id);let nextShell=Math.max(-1,...shellIds.values())+1;const knowledge=true;
+      children.forEach(id=>{const i=nodeIndex.get(id),rank=ordinal.get(id),baseKey=planeKey(id),placement=satelliteOrbitSlot(rank,nodes[host].kind),{page,layer,slot,capacity:slots,row}=placement;
+        const key=page?baseKey+':capacity-plane:'+page:baseKey,shellKey=key+':layer:'+layer;
+        if(!shellIds.has(shellKey))shellIds.set(shellKey,nextShell++);const shell=shellIds.get(shellKey),radius=this.collisionRadii[host]+this.collisionRadii[i];
+        this.orbits[id]={host:nodes[host].id,localShell:shell,localSlots:slots,globalRow:row,planePage:page,radialLayer:layer,planeKey:key,...(knowledge?{knowledgePlane:true,planePage:page,radialLayer:layer}:{}),axis:[0,1,0],radius,targetRadius:radius,phase:slot*Math.PI*2/slots+layer*.2+page*.618,hostMass:this.masses[host]};});
     }
+    this.stablePlanetSlots||=new Map();
+    if(unifiedNetwork){let rank=0;for(const {node}of cores)if(!this.starIds.has(node.id))this.stablePlanetSlots.set(node.id,{host:this.coreId,rank:rank++});}
+    const usedPlanetSlots=new Set();
+    for(const {node}of cores)if(!this.starIds.has(node.id)){const previous=this.stablePlanetSlots.get(node.id);if(previous?.host===this.coreId)usedPlanetSlots.add(previous.rank);}
+    for(const {node}of cores)if(!this.starIds.has(node.id)){const previous=this.stablePlanetSlots.get(node.id);if(previous?.host!==this.coreId){let rank=0;while(usedPlanetSlots.has(rank))rank++;usedPlanetSlots.add(rank);this.stablePlanetSlots.set(node.id,{host:this.coreId,rank});}}
     const primary=nodeIndex.get(this.coreId);
     if(primary!==undefined)for(const {node}of cores){
       if(node.id===this.coreId)continue;
       const i=nodeIndex.get(node.id);
       if(this.starIds.has(node.id)){const radius=(this.collisionRadii[primary]+this.collisionRadii[i])*1.12;
         this.orbits[node.id]={host:this.coreId,kind:'star',binary:true,radius,targetRadius:radius,axis:[0,1,0],hostMass:this.masses[primary],launchKey:'binary:'+this.coreId};continue;}
-      const rank=cores.filter(c=>!this.starIds.has(c.node.id)).findIndex(c=>c.node.id===node.id);
-      const ring=Math.floor(rank/8),slot=rank%8;
+      const rank=this.stablePlanetSlots.get(node.id).rank;
+      const {row:ring,slot,capacity:slots,page,layer}=fibonacciOrbitSlot(rank);
       const maxPlanetRadius=Math.max(...cores.slice(1).map(c=>this.collisionRadii[nodeIndex.get(c.node.id)]),1);
       const nineAU=[...SOLAR_ORBIT_AU,39.482],band=ring%9,cycle=Math.floor(ring/9);
       const base=Math.max(spacing*3,this.collisionRadii[primary]+maxPlanetRadius*3);
-      const radius=base+(maxPlanetRadius*3+spacing)* (Math.log1p(nineAU[band])/Math.log(1.387)+cycle*12);
-      this.orbits[node.id]={host:this.coreId,kind:'planet',ring,slot,phase:slot*Math.PI/4+ring*.23,axis:[0,1,0],radius,targetRadius:radius,hostMass:this.masses[primary],launchKey:'planet-ring:'+this.coreId+':'+ring+':'+slot};
+      const radius=unifiedNetwork?this.orbitalClearance(i,primary):base+(maxPlanetRadius*3+spacing)* (Math.log1p(nineAU[band])/Math.log(1.387)+cycle*12);
+      this.orbits[node.id]={host:this.coreId,kind:'planet',...(unifiedNetwork?{planeKey:this.coreId+':planet-plane:'+page}:{}),ring,slot,localSlots:slots,globalRow:ring,planePage:page,radialLayer:layer,phase:slot*Math.PI*2/slots+ring*.23,axis:[0,1,0],radius,targetRadius:radius,hostMass:this.masses[primary],launchKey:'planet-ring:'+this.coreId+':'+ring+':'+slot};
     }
     for(const group of this.sharedOrbits)if(this.orbits[group.id])this.orbits[group.id].launchKey='shared:'+group.hosts.map(i=>nodes[i].id).sort().join('|');
     this.centralOrbitFrame=orbitalFrame([...this.starIds].sort().join('|'));
@@ -277,8 +299,8 @@ export class AffinityLayout {
         if(knowledge){const previous=planeBounds.get(plane)||{radius:0,extent:0,size:0};previousRadiusForPlane=previous.radius;previousExtentForPlane=previous.extent;}
         const extent=Math.max(...ids.map(id=>this.systemExtents[nodeIndex.get(id)])),size=Math.max(...ids.map(id=>this.subtreeMaxRadius[nodeIndex.get(id)])),slots=this.orbits[ids[0]].localSlots;
         const oldPrevious=previous,oldExtent=previousExtent;if(knowledge){previous=previousRadiusForPlane;previousExtent=previousExtentForPlane;}
-        const parentGap=SURFACE_GAP+.2*Math.min(this.collisionRadii[host],size);
-        const baselineRadius=Math.max((this.collisionRadii[host]+extent+parentGap)/.98,(2*extent+SURFACE_GAP)/(2*Math.sin(Math.PI/slots)*.98),(previous*1.02+previousExtent+extent+SURFACE_GAP)/.98);
+        const parentGap=SURFACE_GAP+4*this.collisionRadii[host];
+        const baselineRadius=Math.max((this.collisionRadii[host]+extent+parentGap)/.98,(slots>1?(2*extent+SURFACE_GAP)/(2*Math.sin(Math.PI/slots)*.98):0),(previous*1.02+previousExtent+extent+SURFACE_GAP)/.98);
         const placed=[];
         // Pack actual child envelopes, rather than assigning every child the
         // largest sibling's envelope. All members of this shell share a plane
@@ -286,7 +308,11 @@ export class AffinityLayout {
         for(const id of [...ids].sort((a,b)=>this.systemExtents[nodeIndex.get(b)]-this.systemExtents[nodeIndex.get(a)]||a.localeCompare(b))){
           const i=nodeIndex.get(id),e=this.systemExtents[i],s=this.subtreeMaxRadius[i],o=this.orbits[id];
           let radius=Math.max(baselineRadius*LOCAL_ORBIT_DISTANCE_SCALE,(this.collisionRadii[host]+e+parentGap)/.98,(previous*1.02+previousExtent+e+SURFACE_GAP)/.98);
-          const safe=r=>knowledge?knowledgePlaced.every(p=>Math.abs(r-p.radius)-.02*(r+p.radius)>=e+p.extent+SURFACE_GAP-1e-8||orbitSweepDistance(o,r,p.orbit,p.radius)-.02*(r+p.radius)>=e+p.extent+SURFACE_GAP-1e-8):placed.every(p=>{const angle=o.phase-p.phase,nominal=Math.sqrt(Math.max(0,r*r+p.radius*p.radius-2*r*p.radius*Math.cos(angle)));return nominal-.02*(r+p.radius)>=e+p.extent+SURFACE_GAP-1e-8;});
+          // Co-planar siblings share the same tidal field and angular clock.
+          // Its displacement derivatives are bounded by .08 radially and .04
+          // tangentially: separation stays >= .88 of nominal, rather than
+          // losing independent 2% radii per body. Primary-owned bodies have no tide.
+          const safe=r=>knowledge?knowledgePlaced.every(p=>Math.abs(r-p.radius)-.02*(r+p.radius)>=e+p.extent+SURFACE_GAP-1e-8||orbitSweepDistance(o,r,p.orbit,p.radius)*(o.planeKey===p.orbit.planeKey?(this.orbits[nodes[host].id]?.88:1):1)-(o.planeKey===p.orbit.planeKey?0:.02*(r+p.radius))>=e+p.extent+SURFACE_GAP-1e-8):placed.every(p=>{const angle=o.phase-p.phase,nominal=Math.sqrt(Math.max(0,r*r+p.radius*p.radius-2*r*p.radius*Math.cos(angle)));return nominal-.02*(r+p.radius)>=e+p.extent+SURFACE_GAP-1e-8;});
           if(!safe(radius)){let low=Math.max(radius,...placed.map(p=>p.radius)),high=low;while(!safe(high))high=high*1.25+1;for(let step=0;step<40;step++){const middle=(low+high)/2;if(safe(middle))high=middle;else low=middle;}radius=high;}
           o.radius=o.targetRadius=radius;o.uncompressedShellRadius=baselineRadius;
           placed.push({radius,phase:o.phase,extent:e,size:s});
@@ -298,12 +324,22 @@ export class AffinityLayout {
         if(knowledge){planeBounds.set(plane,{radius:previous,extent,size});previous=oldPrevious;previousExtent=oldExtent;}
       }
     }
-    configureSharedTours(this,orbitalFrame);
+    configureSharedTours(this,orbitalFrame,satelliteOrbitSlot);
+    // Satellite centre reach excludes the satellite body radius. Full sphere
+    // envelopes remain a separate safety constraint for whole-group packing.
+    this.satelliteCenterExtents=nodes.map(()=>0);
+    for(const n of [...this.orbitOrder].reverse()){
+      const o=this.orbits[n.id];if(!o||o.kind==='planet'||o.kind==='star')continue;
+      const i=nodeIndex.get(n.id),host=nodeIndex.get(o.host),tide=this.orbits[o.host]?1.02:1;
+      this.satelliteCenterExtents[host]=Math.max(this.satelliteCenterExtents[host],o.targetRadius*tide+this.satelliteCenterExtents[i]);
+    }
+    for(const g of this.sharedOrbits)for(const visit of g.visits){const host=nodeIndex.get(visit.host);this.satelliteCenterExtents[host]=Math.max(this.satelliteCenterExtents[host],visit.radius+this.satelliteCenterExtents[g.index]);}
     const starIndices=[...this.starIds].map(id=>nodeIndex.get(id)),starExtent=Math.max(0,...starIndices.map(i=>this.systemExtents[i])),starSize=Math.max(0,...starIndices.map(i=>this.subtreeMaxRadius[i]));
     this.centralOrbitRadius=0;
     if(starIndices.length>1)for(let a=0;a<starIndices.length;a++)for(let b=a+1;b<starIndices.length;b++){
       const i=starIndices[a],j=starIndices[b],chord=2*Math.sin(Math.PI*(b-a)/starIndices.length);
-      this.centralOrbitRadius=Math.max(this.centralOrbitRadius,(this.systemExtents[i]+this.systemExtents[j]+SURFACE_GAP)/chord);
+      const parentMinimum=this.orbits[nodes[j].id]?.host===nodes[i].id?this.orbitalClearance(j,i):this.orbits[nodes[i].id]?.host===nodes[j].id?this.orbitalClearance(i,j):0;
+      this.centralOrbitRadius=Math.max(this.centralOrbitRadius,Math.max(this.systemExtents[i]+this.systemExtents[j]+SURFACE_GAP,parentMinimum)/chord);
     }
     const starMass=starIndices.reduce((sum,i)=>sum+this.masses[i],0);
     const mean=[0,0];starIndices.forEach((i,k)=>{mean[0]+=Math.cos(k*Math.PI*2/starIndices.length)*this.masses[i]/starMass;mean[1]+=Math.sin(k*Math.PI*2/starIndices.length)*this.masses[i]/starMass;});
@@ -311,21 +347,28 @@ export class AffinityLayout {
     const ringBounds=new Map();
     for(const n of nodes){const o=this.orbits[n.id];if(o?.kind!=='planet')continue;
       const extent=this.systemExtents[nodeIndex.get(n.id)];
-      ringBounds.set(o.ring,Math.max(ringBounds.get(o.ring)||0,o.targetRadius*GROUP_DISTANCE_SCALE,extent*Math.max(1,4*GROUP_DISTANCE_SCALE)));
+      ringBounds.set(o.ring,Math.max(ringBounds.get(o.ring)||0,unifiedNetwork?0:o.targetRadius*GROUP_DISTANCE_SCALE,unifiedNetwork?0:extent*Math.max(1,4*GROUP_DISTANCE_SCALE),this.orbitalClearance(nodeIndex.get(n.id),primary)));
     }
-    let previousRadius=0,previousEnvelope=centralExtent,previousSize=starSize;
+    const primaryLocalReach=Math.max(0,...starIndices.map(i=>this.satelliteCenterExtents[i]));
+    let previousRadius=0,previousEnvelope=Math.max(0,...starIndices.map(i=>this.collisionRadii[i])),previousSize=starSize,previousLocalReach=primaryLocalReach;
     for(const ring of [...ringBounds.keys()].sort((a,b)=>a-b)){
       const members=nodes.filter(n=>this.orbits[n.id]?.kind==='planet'&&this.orbits[n.id].ring===ring);
       const envelope=Math.max(...members.map(n=>this.systemExtents[nodeIndex.get(n.id)]));
+      const bodyExtent=Math.max(...members.map(n=>this.collisionRadii[nodeIndex.get(n.id)]));
       const size=Math.max(...members.map(n=>this.subtreeMaxRadius[nodeIndex.get(n.id)]));
+      const localReach=Math.max(0,...members.map(n=>this.satelliteCenterExtents[nodeIndex.get(n.id)]));
+      // Propagate only the preceding row's own local satellite-centre reach.
+      // Only body clearance and same-ring body packing may enlarge this gap;
+      // the spatial envelopes of separate groups are allowed to overlap.
+      const baselineGap=LOCAL_ROW_REACH_MULTIPLIER*previousLocalReach;
       let sameRingMinimum=0;
       for(let a=0;a<members.length;a++)for(let b=a+1;b<members.length;b++){
         const i=nodeIndex.get(members[a].id),j=nodeIndex.get(members[b].id),angle=Math.abs(this.orbits[members[a].id].phase-this.orbits[members[b].id].phase);
-        sameRingMinimum=Math.max(sameRingMinimum,(this.systemExtents[i]+this.systemExtents[j]+4*Math.max(this.subtreeMaxRadius[i],this.subtreeMaxRadius[j]))/(2*Math.abs(Math.sin(angle/2))));
+        sameRingMinimum=Math.max(sameRingMinimum,this.bodyMinimum(i,j)/(2*Math.abs(Math.sin(angle/2))));
       }
-      const radius=Math.max(ringBounds.get(ring),sameRingMinimum,previousRadius+previousEnvelope+envelope+SURFACE_GAP);
-      for(const n of members){const o=this.orbits[n.id];o.radius=o.targetRadius=radius;o.satelliteEnvelope=envelope;o.satelliteLimit=radius;}
-      previousRadius=radius;previousEnvelope=envelope;previousSize=size;
+      const radius=Math.max(ringBounds.get(ring),sameRingMinimum,previousRadius+previousEnvelope+bodyExtent+SURFACE_GAP,unifiedNetwork?previousRadius+baselineGap:0);
+      for(const n of members){const o=this.orbits[n.id];o.radius=o.targetRadius=radius;o.satelliteEnvelope=envelope;o.satelliteLimit=radius;o.rowBaselineGap=baselineGap;o.rowActualGap=radius-previousRadius;}
+      previousRadius=radius;previousEnvelope=bodyExtent;previousSize=size;previousLocalReach=localReach;
     }
     const free=nodes.filter(n=>!this.starIds.has(n.id)&&!this.orbits[n.id]).sort((a,b)=>a.id.localeCompare(b.id));
     const freeSize=Math.max(0,...free.map(n=>this.collisionRadii[nodeIndex.get(n.id)]));
@@ -333,9 +376,10 @@ export class AffinityLayout {
     this.tourWorldBound=Math.max(100,systemBound*4);
     this.freeOrbits=new Map();
     for(let k=0;k<free.length;k++){
-      const shell=Math.floor((Math.sqrt(1+4*k/3)-1)/2),start=3*shell*(shell+1),slots=6*(shell+1);
-      const radius=Math.max(systemBound+freeSize+SURFACE_GAP+shell*(2*freeSize+SURFACE_GAP),(freeSize+SURFACE_GAP/2)/Math.sin(Math.PI/slots));
-      this.freeOrbits.set(free[k].id,{radius,phase:(k-start)*Math.PI*2/slots,frame:orbitalFrame('unassigned:'+shell)});
+      const {row:shell,slot,capacity:slots}=fibonacciOrbitSlot(k);
+      const radius=Math.max(systemBound+freeSize+SURFACE_GAP+shell*(2*freeSize+SURFACE_GAP),(slots>1?(freeSize+SURFACE_GAP/2)/Math.sin(Math.PI/slots):0));
+      this.freeOrbits.set(free[k].id,{radius,phase:slot*Math.PI*2/slots,frame:orbitalFrame('unassigned:'+shell)});
+      const old=previousFree.get(free[k].id);if(unifiedNetwork&&this.steps>0&&old&&(Math.abs(old.radius-radius)>1e-8||previousCore!==this.coreId)){this.freeTransitions||=new Set();this.freeTransitions.add(free[k].id);}
     }
     // Gravity groups include planet hosts too; visual roles are independent of this index.
     this.stellarIndices=nodes.map((n,i)=>n.isMainTag?i:-1).filter(i=>i>=0);
@@ -350,6 +394,21 @@ export class AffinityLayout {
     this.spinRates=Object.fromEntries(nodes.map(n=>[n.id,(this.starIds.has(n.id)?.08:.25)*(.72+.56*phaseOf(n.id)/(Math.PI*2))]));
     this.G=spacing**3*.0000005;
     this.gravityLaunches||=new Map();
+    if(unifiedNetwork&&this.steps>0)for(const n of nodes){
+      const o=this.orbits[n.id],old=previousOrbits[n.id];if(o?.kind!=='planet'||(!old&&n.id!==previousCore))continue;
+      const same=old?.host===o.host&&old.ring===o.ring&&old.phase===o.phase&&Math.abs(old.targetRadius-o.targetRadius)<1e-8&&JSON.stringify(old.frame)===JSON.stringify(o.frame);
+      if(same){if(old.motion)o.motion=old.motion;continue;}
+      const host=this.positions[o.host],relative=this.positions[n.id].map((x,k)=>x-host[k]),r=Math.hypot(...relative);
+      const clock=this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0]))?.angle||0;
+      let frame=old?.motion?.frame||old?.frame,angle=old?.lockAngle;
+      if(old?.host!==o.host||!Number.isFinite(angle)){
+        const u=relative.map(x=>x/(r||1)),reference=Math.abs(u[1])<.9?[0,1,0]:[1,0,0],dot=reference.reduce((sum,x,k)=>sum+x*u[k],0),v=reference.map((x,k)=>x-dot*u[k]),len=Math.hypot(...v)||1;
+        for(let k=0;k<3;k++)v[k]/=len;
+        frame={u,v,normal:[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]};angle=0;
+      }
+      const drift=((angle-o.phase-clock)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);
+      o.motion={radius:r,frame,drift};
+    }
   }
 
   advance(elapsed) {
@@ -531,6 +590,7 @@ export class AffinityLayout {
   stepGravity(){
     // Display choreography only: no force integration, impulses or escape velocities.
     const stars=[...this.starIds].map(id=>this.nodeIndices.get(id));
+    if(this.centerTarget){let remaining=0;this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*.01;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
     const center=this.center||[0,this.eclipticY,0];
     if(stars.length>1){
       const radius=this.centralOrbitRadius;
@@ -544,11 +604,15 @@ export class AffinityLayout {
     this.lockPlanetOrbits();
     for(const n of this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
       const o=this.freeOrbits.get(n.id),a=o.phase+this.steps*.0007,r=o.radius;
-      const frame=o.frame;this.positions[n.id]=center.map((x,k)=>x+(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a))*r);this.velocities[n.id]=[0,0,0];
+      const frame=o.frame,goal=center.map((x,k)=>x+(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a))*r),old=this.positions[n.id];
+      if(this.freeTransitions?.has(n.id)){const delta=goal.map((x,k)=>x-old[k]),distance=Math.hypot(...delta),limit=Math.max(.01,Math.hypot(...old.map((x,k)=>x-center[k]))*.02);this.positions[n.id]=old.map((x,k)=>x+delta[k]*Math.min(1,limit/(distance||1)));if(distance<=limit)this.freeTransitions.delete(n.id);}else this.positions[n.id]=goal;
+      this.velocities[n.id]=this.positions[n.id].map((x,k)=>x-old[k]);
     }
     advanceSharedTours(this);
+    resolveBodyAvoidance(this);
   }
   lockPlanetOrbits({advance=true}={}){
+    if(advance)this.preparePlanetSpeeds();
     const shifts=new Map(),boosts=new Map();
     for(const n of this.orbitOrder){
       const orbit=this.orbits[n.id];if(!orbit||orbit.kind==='star')continue;
@@ -556,18 +620,25 @@ export class AffinityLayout {
       for(let a=0;a<3;a++){p[a]+=shifts.get(orbit.host)?.[a]||0;v[a]+=boosts.get(orbit.host)?.[a]||0;}
       {
         const i=this.nodeIndices.get(n.id),host=this.nodeIndices.get(orbit.host),q=this.positions[orbit.host],u=this.velocities[orbit.host];
-        const baseRadius=Math.max(orbit.targetRadius,this.bodyMinimum(i,host));
+        let baseRadius=Math.max(orbit.targetRadius,this.bodyMinimum(i,host));
+        if(orbit.motion){const m=orbit.motion,limit=Math.max(.01,m.radius*.015),delta=baseRadius-m.radius;
+          if(advance){m.radius+=Math.max(-limit,Math.min(limit,delta));m.drift=Math.max(0,m.drift-.006);
+            const unit=v=>{const len=Math.hypot(...v)||1;return v.map(x=>x/len);},u=unit(m.frame.u.map((x,k)=>x+(orbit.frame.u[k]-x)*.01)),raw=m.frame.v.map((x,k)=>x+(orbit.frame.v[k]-x)*.01),dot=raw.reduce((sum,x,k)=>sum+x*u[k],0),v=unit(raw.map((x,k)=>x-dot*u[k]));
+            m.frame={u,v,normal:[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]};
+          }
+          baseRadius=Math.max(m.radius,this.orbitalClearance(i,host));
+        }
         const initialPhase=orbit.phase??Math.atan2(p[2]-q[2],p[0]-q[0]);
-        // A shared ring has one angular speed, preserving its eight nonoverlapping slots.
+        // Each planet owns a continuous clock; close followers yield without stopping.
         // Visual orbit periods stay observable even after clearance enlarges a ring.
-        const omega=orbit.kind==='planet'?.003/(1+(orbit.ring||0)*.14):orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08);
+        const omega=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08);
         // Persistent clocks survive sync(): background imports must not reset
         // any descendant's revolution. Co-orbiting bodies share a phase clock.
-        const clockKey=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet':orbit.knowledgePlane?'knowledge':'satellite',orbit.knowledgePlane?0:orbit.kind==='planet'?orbit.ring:orbit.localShell]);
+        const clockKey=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
         let clock=this.orbitClocks.get(clockKey);
         if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(clockKey,clock);}
         if(advance&&clock.lastStep!==this.steps){clock.angle-=omega;clock.lastStep=this.steps;}
-        orbit.angularVelocity=omega;orbit.lockAngle=initialPhase+clock.angle;
+        orbit.angularVelocity=omega;orbit.lockAngle=initialPhase+clock.angle+(orbit.motion?.drift||0);
         // Only local satellites receive a bounded, differential tidal response.
         const parentOrbit=this.orbits[orbit.host],ancestor=parentOrbit&&this.nodeIndices.get(parentOrbit.host);
         let perturbation=0;
@@ -581,11 +652,64 @@ export class AffinityLayout {
         const radius=Math.max(this.bodyMinimum(i,host),baseRadius*(1+perturbation));
         orbit.radialPerturbation=perturbation;
         const c=Math.cos(orbit.lockAngle),s=Math.sin(orbit.lockAngle);
-        const frame=orbit.frame;
-        for(let a=0;a<3;a++){p[a]=q[a]+(frame.u[a]*c+frame.v[a]*s)*radius;v[a]=u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
+        const frame=orbit.motion?.frame||orbit.frame;
+        let next=q.map((x,a)=>x+(frame.u[a]*c+frame.v[a]*s)*radius);
+        if(orbit.motion)next=this.steerPlanetTransition(n.id,orbit,oldP,next,q);
+        for(let a=0;a<3;a++){p[a]=next[a];v[a]=orbit.motion?p[a]-oldP[a]:u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
+        if(orbit.motion&&orbit.motion.drift===0&&Math.abs(orbit.motion.radius-orbit.targetRadius)<1e-7&&['u','v'].every(key=>orbit.motion.frame[key].every((x,k)=>Math.abs(x-orbit.frame[key][k])<1e-7)))delete orbit.motion;
       }
       shifts.set(n.id,p.map((x,a)=>x-oldP[a]));boosts.set(n.id,v.map((x,a)=>x-oldV[a]));
     }
+  }
+
+  preferredPlanetSpeed(id,orbit){return .003/(1+(orbit.ring||0)*.14)*(.85+.3*phaseOf('planet-period:'+id)/(Math.PI*2));}
+  preparePlanetSpeeds(){
+    const groups=new Map(),speeds=new Map();
+    for(const n of this.nodes){const orbit=this.orbits[n.id];if(orbit?.kind!=='planet')continue;
+      const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClocks.get(key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
+      if(!clock){clock={angle:0,lastStep:-1,omega:preferred};this.orbitClocks.set(key,clock);}
+      const speed=(clock.omega??preferred)+(preferred-(clock.omega??preferred))*.04;speeds.set(n.id,speed);orbit.preferredAngularVelocity=preferred;
+      if(orbit.motion)continue;
+      const ringKey=orbit.host+':'+orbit.ring;if(!groups.has(ringKey))groups.set(ringKey,[]);
+      groups.get(ringKey).push({id:n.id,orbit,angle:((orbit.phase+clock.angle)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)});
+    }
+    for(const group of groups.values())if(group.length>1){
+      group.sort((a,b)=>a.angle-b.angle||a.id.localeCompare(b.id));
+      // Propagate the forward neighbour's positive speed around the ring.
+      // Closing clearance shrinks continuously, so yielding starts before contact.
+      for(let pass=0;pass<group.length;pass++)for(let i=0;i<group.length;i++){
+        const follower=group[i],leader=group[(i+group.length-1)%group.length],radius=follower.orbit.targetRadius;
+    const minimum=this.bodyMinimum(this.nodeIndices.get(follower.id),this.nodeIndices.get(leader.id));
+        const angularGap=2*Math.asin(Math.min(1,minimum/(2*radius))),gap=(follower.angle-leader.angle+Math.PI*2)%(Math.PI*2),available=Math.max(0,gap-angularGap),maximum=speeds.get(leader.id)+available*.04;
+        speeds.set(follower.id,Math.min(speeds.get(follower.id),maximum));
+      }
+    }
+    for(const n of this.nodes){const o=this.orbits[n.id];if(o?.kind==='planet')this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
+    this.planetStepSpeeds=speeds;
+  }
+
+  steerPlanetTransition(id,orbit,start,goal,host){
+    const i=this.nodeIndices.get(id),relative=start.map((x,k)=>x-host[k]),radius=Math.hypot(...relative),limit=Math.max(.01,radius*.025);
+    const obstacles=this.nodes.filter(n=>n.isMainTag&&n.id!==id).map(n=>({p:this.positions[n.id],minimum:Math.max(this.bodyMinimum(i,this.nodeIndices.get(n.id)),n.id===orbit.host?this.orbitalClearance(i,this.nodeIndices.get(n.id)):0)}));
+    const clear=end=>obstacles.every(({p,minimum})=>{
+      const delta=end.map((x,k)=>x-start[k]),d2=delta.reduce((sum,x)=>sum+x*x,0),t=d2?Math.max(0,Math.min(1,p.reduce((sum,x,k)=>sum+(x-start[k])*delta[k],0)/d2)):0;
+      const before=Math.hypot(...start.map((x,k)=>x-p[k])),closest=Math.hypot(...start.map((x,k)=>x+delta[k]*t-p[k]));
+      return closest>=Math.min(minimum,before)-1e-7&&Math.hypot(...end.map((x,k)=>x-p[k]))>=Math.min(minimum,before)-1e-7;
+    });
+    const delta=goal.map((x,k)=>x-start[k]),length=Math.hypot(...delta),candidate=start.map((x,k)=>x+delta[k]*Math.min(1,limit/(length||1)));
+    if(length<=limit&&clear(candidate))return goal;
+    let accepted=clear(candidate)?candidate:null;
+    if(!accepted){
+      const frame=orbit.motion.frame,c=Math.cos(orbit.lockAngle),s=Math.sin(orbit.lockAngle),radial=relative.map(x=>x/(radius||1)),forward=frame.u.map((x,k)=>x*s-frame.v[k]*c);
+      const directions=[forward,forward.map((x,k)=>x+radial[k]),radial,forward.map((x,k)=>x+frame.normal[k]),forward.map((x,k)=>x-frame.normal[k]),frame.normal,frame.normal.map(x=>-x)];
+      for(const direction of directions){const len=Math.hypot(...direction)||1,p=start.map((x,k)=>x+direction[k]*limit/len);if(clear(p)){accepted=p;break;}}
+    }
+    accepted||=[...start];
+    const r=accepted.map((x,k)=>x-host[k]),reach=Math.hypot(...r)||1,unit=r.map(x=>x/reach),c=Math.cos(orbit.lockAngle),s=Math.sin(orbit.lockAngle),old=orbit.motion.frame,tangent=old.u.map((x,k)=>-x*s+old.v[k]*c),dot=tangent.reduce((sum,x,k)=>sum+x*unit[k],0),v=tangent.map((x,k)=>x-dot*unit[k]),len=Math.hypot(...v)||1;
+    for(let k=0;k<3;k++)v[k]/=len;
+    const u=unit.map((x,k)=>x*c-v[k]*s),w=unit.map((x,k)=>x*s+v[k]*c);
+    orbit.motion.radius=reach;orbit.motion.frame={u,v:w,normal:[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]]};
+    return accepted;
   }
 
   settleEcliptic(){
@@ -637,7 +761,7 @@ export class AffinityLayout {
     return result;
   }
 
-  orbitalClearance(i,host){return this.bodyMinimum(i,host);}
+  orbitalClearance(i,host){return 5*this.collisionRadii[host]+this.collisionRadii[i];}
 
   protectPlanetOrbits(){
     const index=new Map(this.nodes.map((n,i)=>[n.id,i])),shifts=new Map(),boosts=new Map();

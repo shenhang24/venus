@@ -1,7 +1,8 @@
 import { tr, initializeLanguage, uiLocale, uiError } from '/i18n.js';
 await initializeLanguage();
 import { marked } from "/vendor/marked.js";
-import { Network, shortNodeLabel } from "/graph.js";
+import { Network, shortNodeLabel, createRelationVisibility, relationDisplayTypes } from "/graph.js";
+const relationVisibility=createRelationVisibility(globalThis.localStorage);
 import { knowledgeForSource, knowledgeInScope, knowledgeListPage, chooseKnowledgeSource, knowledgeStatus, taskPresentation, activityState, fileStageProgress, InlineDrafts, saveInlineDraft, linkedNeighbours } from "/knowledge-view.js";
 let knowledgeSource=null,knowledgeQuery='',knowledgePage=0;
 const inlineDrafts=new InlineDrafts();
@@ -28,18 +29,21 @@ let state = {
   vaultId = null,
   chosen = null,
   graph = null,
-  hidden = new Set(),
+  hidden = relationVisibility.hiddenFor([]),
   submitAction = null,
   selectedEdge = null,
   benchmark = false;
 const labels = {
   vault: tr("Vault 原始资料"),
-  knowledge: tr("知识点"),
-  skill: tr("技能"),
+  knowledge: tr("AI 知识点"),
+  skill: tr("AI 技能"),
+  concept:tr('概念云'),
   "vault-network": tr("Vault 网络"),
-  "knowledge-network": tr("知识网络"),
-  "skill-network": tr("技能网络"),
+  "knowledge-network": tr("AI 知识网络"),
+  "skill-network": tr("AI 技能网络"),
+  "concept-network":tr('概念网络'),
 };
+const contentPurposes={vault:tr('保存任意来源的原始 Markdown，保留原文。'),knowledge:tr('供 AI 检索、衔接上下文与回答；不覆盖当前指示。'),skill:tr('记录已认可方法、适用范围与限制；区分未确认建议，不代替当前授权。'),concept:tr('帮助人理解交流中真正获得的认识；未确认问题单独记录，可忽略。')};
 const mainTagSelections={};
 function mainTagsHTML(node){return (node.mainTags||[]).length?'<div class="main-tags"><strong>'+tr('主分类')+'</strong> '+node.mainTags.map(tag=>'<button class="category-chip" data-main-tag="'+esc(tag.name)+'" data-main-kind="'+node.kind+'" title="'+esc(tag.reason+'\n'+tag.quote)+'">'+esc(tag.name)+'</button>').join('')+'</div>':'';}
 function bindMainTags(){
@@ -82,7 +86,7 @@ function activeFilesHTML() {
   return (state.analysis?.activeFiles || []).map(file => {
     const progress=state.analysis.fileProgress?.[file.sourceId];
     return '<div class="job"><strong title="'+esc(file.title)+'">' + tr('槽位 ') + file.slot + ' · ' + esc(file.title) + '</strong><small>' +
-      tr('分段联合分析：知识、关系、分类与技能') + '<br>' +
+      tr(file.taskKind==='concept-only'?'仅补历史概念，不重跑 AI 知识点或 AI 技能':state.features?.concepts?'分段联合分析：知识、关系、分类、技能与概念':'分段联合分析：知识、关系、分类与技能') + '<br>' +
       tr('本段字符范围：') + file.offset + '–' + file.end + '<br>' +
       (progress?.parts || 0) + tr(' 段已保存 · ') + (progress?.offset || 0) + ' / ' + file.total + tr(' 字符已落盘') + '</small>'+stageProgressHTML(file.sourceId)+'</div>';
   }).join('');
@@ -117,6 +121,7 @@ async function refresh() {
   const next = await r.json();
   if (next.revision === state.revision) return;
   state = next;
+  hidden=relationVisibility.hiddenFor(state.types);
   if (selectedEdge)
     selectedEdge =
       state.relations.find((r) => r.id === selectedEdge.id) || null;
@@ -124,7 +129,7 @@ async function refresh() {
     vaultId = state.nodes.find((n) => n.kind === "vault" && !n.mergedInto)?.id;
   const mergedSelection=state.nodes.find(n=>n.id===vaultId)?.mergedInto;
   if(mergedSelection)vaultId=mergedSelection;
-  for (const k of ["vault", "knowledge", "skill"])
+  for (const k of ["vault", "knowledge", "skill", "concept"])
     $("#" + k + "-count").textContent = state.nodes.filter(
       (n) => n.kind === k && !n.mergedInto,
     ).length;
@@ -248,7 +253,7 @@ async function render({force=false}={}) {
   }
   if (n) chosen = n.id;
   const panel =
-    view === "skill"
+    view === 'concept'?tr('概念云 · 内容目录'):view === "skill"
       ? tr("综合能力")
       : view === "knowledge"
         ? tr("知识浏览范围")
@@ -257,7 +262,7 @@ async function render({force=false}={}) {
   $("#main").innerHTML =
     '<div class="file-panel"><div class="panel-heading">' +
     panel +
-    '</div><div class="subtle">' +
+    '</div><p class="subtle">'+esc(contentPurposes[view]||'')+'</p>'+(view==='concept'?'<button type="button" id="concept-plan" class="wide">'+tr('查看提炼范围与模板')+'</button><button type="button" id="concept-new" class="wide"'+(!state.features?.conceptAdmission?' disabled':'')+'>'+tr('新建概念')+'</button>':'')+'<div class="subtle">' +
     (view === "knowledge"
       ? tr('已存知识总数：')+knowledgeInScope(state.nodes).length+' · '+tr('当前范围：')+nodes.length
       : nodes.length +
@@ -342,6 +347,8 @@ async function render({force=false}={}) {
       render({force:true});
     };
   if(n)bindInlineEditor(n);
+  if($('#concept-plan'))$('#concept-plan').onclick=conceptPlanDialog;
+  if($('#concept-new'))$('#concept-new').onclick=conceptCreateDialog;
   if ($("#queue-button")) $("#queue-button").onclick = () => queue(n);
   document.querySelectorAll('[data-reading-page]').forEach(b => b.onclick = () => {
     readingPages.set(n.id, Number(b.dataset.readingPage)); render({force:true});
@@ -360,6 +367,7 @@ async function render({force=false}={}) {
   renderInspector();
 }
 function emptyView() {
+  if(view==='concept')return '<div class="empty"><div class="empty-symbol">◈</div><h2>'+tr('从对话中形成概念')+'</h2><p>'+tr('直接整理 Vault 中形成的认识、理由和技术线。')+'</p><p>'+tr('每篇包括：新标题、情境与目的的简短综述、解释认识及意义的正文，以及独立 Reference。操作日志、执行状态和排障碎片不作为概念。')+'</p><p class="subtle">'+tr(state.features?.concepts?'概念随后续分段与新增资料一并提炼；本批完成后自动补提历史缺失概念。':'概念云入口已就绪；增量提炼与历史补提接入待后端重新加载，本页不会自行启动新调用。')+'</p></div>';
   if (view === 'knowledge' && knowledgeSource && !selectedCategories(view).size) {
     const [title, detail] = knowledgeStatus(state.analysis, vaultId);
     return '<div class="empty"><h2>' + esc(title) + '</h2><p>' + esc(detail) + '</p></div>';
@@ -396,6 +404,24 @@ function emptyView() {
     "</button></div>"
   );
 }
+async function conceptCreateDialog(){
+  if(!state.features?.conceptAdmission)return;
+  const r=await fetch('/api/concepts/template');if(!r.ok){toast(tr('概念模板读取失败'));return;}const {template}=await r.json();
+  const vaults=state.nodes.filter(n=>n.kind==='vault'&&!n.mergedInto);
+  const evidenceFields=[['questionQuote','提问原句'],['answerQuote','回答原句'],['userConfirmationQuote','用户认可原句'],['conclusionQuote','结论原句']];
+  modal(tr('新建概念'),'<label class="field">'+tr('标题')+'<input name="title" required></label><label class="field">Vault<select name="sourceId">'+vaults.map(n=>'<option value="'+esc(n.id)+'">'+esc(n.title)+'</option>').join('')+'</select></label>'+evidenceFields.map(([name,label])=>'<label class="field">'+tr(label)+'<textarea name="'+name+'" required></textarea></label>').join('')+'<label class="field">'+tr('Markdown 正文')+'<textarea name="body" rows="16" required>'+esc(template)+'</textarea></label><p class="subtle">'+tr('手动保存，不调用模型；来源须是 Vault 原文。')+'</p>',async form=>{
+    const source=state.nodes.find(n=>n.id===form.get('sourceId'));await loadBody(source);const admission=Object.fromEntries(evidenceFields.map(([name])=>[name,form.get(name)]));admission.confirmationMeaning='answer-endorsement';admission.confirmationTarget=admission.answerQuote;
+    const at=source.body.indexOf(admission.conclusionQuote),ref={path:source.path,sourceId:source.id,sourceHash:source.hash,readRange:{start:0,end:source.body.length},admission,discussion:[],locator:{start:at,end:at+admission.conclusionQuote.length},formation:'手工整理用户已认可的讨论结论。',materials:[]};
+    const title=form.get('title').trim(),body=form.get('body').replace(/^# [^\n]+/,'# '+title)+'\n\n'+source.path+'\n'+evidenceFields.map(([name,label])=>{const start=source.body.indexOf(admission[name]);return '- '+tr(label)+' · '+start+'–'+(start+admission[name].length);}).join('\n');
+    const result=await api('upsert',{id:'c-'+crypto.randomUUID().replaceAll('-',''),kind:'concept',title,body,sources:[{id:source.id,sourceHash:source.hash,quote:admission.conclusionQuote}],conceptStance:'讨论假设',conceptReferences:[ref]});navigate('concept',result.id);
+  });
+}
+async function conceptPlanDialog(){
+  const fallback='# 概念名称\n\n## 综述\n情境、要求与目的。\n\n## 概念\n是什么、为何如此判断、形成的能力与认识、效果及边界；不是操作流水账。\n\n## 认识性质\n用户观点／讨论假设／助手建议／已确认结论。\n\n## Reference\n原 Vault 路径、讨论定位、原讨论参考资料与简短形成线索。';
+  let template=fallback,plan=null;
+  if(state.features?.concepts){try{const responses=await Promise.all([fetch('/api/concepts/template'),fetch('/api/concepts/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})]);if(responses.some(r=>!r.ok))throw Error(tr('概念范围读取失败'));const [t,p]=await Promise.all(responses.map(r=>r.json()));template=t.template;plan=p;}catch(error){toast(error.message);return;}}
+  modal(tr('概念云 · 提炼范围与模板'),'<p>'+tr('只读取 Vault 原始对话，不经过 AI 知识点或 AI 技能；不外网验证、不改写原文。')+'</p>'+(plan?'<p>'+tr('待处理原文：')+plan.sourceCount+tr(' 篇；剩余字符：')+plan.remainingCharacters+tr('；预计分段调用：')+plan.estimatedModelCalls+'</p><p>'+tr('历史缺失概念预计分段调用：')+(plan.estimatedHistoryCalls||0)+tr('；本批完成后，五路中最多使用一路补提。')+'</p><p>'+tr('概念随现有后续分段一并提炼，不额外增加当次模型调用；本批完成后再仅补历史概念。查看范围不触发调用。')+'</p>':'<p>'+tr('当前后端尚未加载概念存储与增量接入；模板可查看，历史补提尚未启动。')+'</p>')+'<pre class="concept-template">'+esc(template)+'</pre>',async()=>{},tr('关闭'));
+}
 function article(n) {
   const draft=inlineDrafts.open(n),size = 24000, count = Math.max(1, Math.ceil(draft.body.length / size));
   const page = Math.min(count - 1, readingPages.get(n.id) || 0);
@@ -411,7 +437,7 @@ function article(n) {
     '<span class="spacer"></span><span id="inline-save-status" role="status">'+esc(tr(draft.status))+'</span><button id="inline-save"'+(!draft.dirty?' disabled':'')+'>'+tr('保存')+'</button></div><input id="inline-title" class="inline-title" aria-label="'+esc(tr('标题'))+'" value="'+esc(draft.title)+'"><div class="metadata"><span class="tag">' +
     (n.kind === "vault"
       ? tr("原始 Markdown")
-      : n.kind === "skill"
+      : n.kind==='concept'?esc(n.conceptStance||tr('讨论假设')):n.kind === "skill"
         ? esc(tr(n.level)) + " · " + esc(n.domain || tr("能力分析"))
         : tr("单篇提取 · ") + esc(tr(n.decision) || tr("新增"))) +
     '</span><span class="subtle">' +
@@ -420,10 +446,14 @@ function article(n) {
     (n.kind === "vault"
       ? tr('<button class="text-button" id="queue-button">查看自动处理进度 →</button>')
       : "") +
-    '</div>' + pager + '<textarea id="inline-body" class="inline-body" aria-label="'+esc(tr('Markdown 正文'))+'" spellcheck="false">' +
+    '</div>' + skillMethodHTML(n) + pager + '<textarea id="inline-body" class="inline-body" aria-label="'+esc(tr('Markdown 正文'))+'" spellcheck="false">' +
     esc(draft.body.slice(page*size,(page+1)*size)) +
     '</textarea>' + pager + '</article>'
   );
+}
+function skillMethodHTML(n){
+  if(n.kind!=='skill')return '';const p=n.methodUse||{status:'legacy-unreviewed',usableAsMethod:false,notice:tr('旧记录保留，未标注用户认可；仅供参考，不覆盖当前指示。')};
+  return '<section class="support"><h4>'+tr(p.usableAsMethod?'用户已认可的适用方法':'未确认或待复核的方法参考')+'</h4><p class="subtle">'+tr('来源角色：')+tr(p.originRole==='user'?'用户':p.originRole==='assistant'?'助手':'引用资料或角色未明')+'</p>'+(p.scope?'<p><strong>'+tr('适用范围')+'</strong> '+esc(p.scope)+'</p>':'')+(p.limitations?'<p><strong>'+tr('限制')+'</strong> '+esc(p.limitations)+'</p>':'')+'<p class="subtle">'+esc(p.notice)+'</p>'+(p.recognition?'<button class="wide" data-node="'+esc(p.recognition.sourceId)+'">'+tr('返回用户认可依据')+' ↗</button><blockquote>'+esc(p.recognition.quote)+'</blockquote>':'')+'</section>';
 }
 function bindInlineEditor(n){
   const draft=inlineDrafts.items.get(n.id),size=24000,page=readingPages.get(n.id)||0,start=page*size;
@@ -448,7 +478,7 @@ function sourceHTML(s) {
     " ↗</button><p>" +
     esc(n?.path || tr("来源缺失")) +
     (s.quoteValid === false || (typeof n?.body === 'string' && !n.body.includes(s.quote)) ? tr(" · 原文已修改，请复核依据") : "") +
-    (s.locator ? " · " + esc(s.locator) : "") +
+    (s.locator ? " · " + esc(typeof s.locator==='object'?s.locator.start+'–'+s.locator.end:s.locator) : "") +
     "</p><blockquote>「" +
     esc(s.quote) +
     "」</blockquote></div>"
@@ -466,14 +496,14 @@ function renderInspector() {
       '<p class="metric">'+tr('大标签颜色按归属连接数变化；中心体积最多为普通基准节点的10倍，半径最多约2.154倍。自动自转关闭，局部公转保留。')+'</p>'+
       categoryFilterHTML(kind) +
       tr('<h4>关系类型 · 多选筛选</h4><button class="text-button" id="select-all">全部显示</button>') +
-      state.types
+      relationDisplayTypes(state.types)
         .map(
           (t) =>
             '<label class="filter"><input type="checkbox" data-filter="' +
             esc(t.id) +
             '" ' +
             (!hidden.has(t.id) ? "checked" : "") +
-            '><span><input type="color" class="type-color" data-type-color="'+esc(t.id)+'" value="'+esc(t.color)+'" aria-label="'+esc(tr('颜色')+' '+t.name)+'">' +
+            '><span>'+(!t.membershipLink?'<input type="color" class="type-color" data-type-color="'+esc(t.id)+'" value="'+esc(t.color)+'" aria-label="'+esc(tr('颜色')+' '+t.name)+'">':'') +
             esc(t.name) +
             "</span></label>",
         )
@@ -516,8 +546,8 @@ function renderInspector() {
     $$("[data-filter]").forEach(
       (c) =>
         (c.onchange = () => {
-          if (c.checked) hidden.delete(c.dataset.filter);
-          else hidden.add(c.dataset.filter);
+          relationVisibility.set(c.dataset.filter,c.checked);
+          hidden=relationVisibility.hiddenFor(state.types);
           if (!benchmark) updateGraph();
           else graph.update({ ...graphData, hidden });
           if(c.checked)focusFilteredContent({relationType:c.dataset.filter});else graph.setHighlight?.([]);
@@ -531,7 +561,8 @@ function renderInspector() {
       input.onchange=async()=>{const type=state.types.find(t=>t.id===input.dataset.typeColor);try{await api('type',{...type,color:input.value,update:true});}catch(error){toast(error.message);}};
     });
     $("#select-all").onclick = () => {
-      hidden.clear();
+      relationVisibility.selectAll(state.types);
+      hidden=relationVisibility.hiddenFor(state.types);
       if (!benchmark) updateGraph();
       else graph.update({ ...graphData, hidden });
       renderInspector();
@@ -576,6 +607,10 @@ function renderInspector() {
     $("#inspector").innerHTML =
       tr('<h3>来源与依据</h3><p class="subtle">内容保存后，在这里沿依据返回原始资料。</p>');
     return;
+  }
+  if(n.kind==='concept'){
+    $('#inspector').innerHTML='<h3>Reference</h3><p class="subtle">'+esc(n.conceptStance||tr('讨论假设'))+'</p>'+n.sources.map(sourceHTML).join('')+'<p class="subtle">'+tr('返回 Vault 原文查看讨论情境。概念不表示用户已掌握某项技能。')+'</p><button id="history-open" class="wide">'+tr('版本历史与回退')+'</button>';
+    $('#history-open').onclick=()=>historyDialog(n);bindNodes($('#inspector'));return;
   }
   const knowledge = state.nodes
     .filter(
@@ -734,10 +769,10 @@ function jobsDialog() {
   modal(
     tr("自动处理进度"),
     activityHTML()+'<div role="status" aria-live="polite"><strong>'+esc(task.status)+'</strong><p>'+esc(task.current)+'</p><p>'+esc(task.progress)+'</p><p>'+esc(task.stage)+'</p>'+(task.problem?'<p>'+esc(task.problem)+'</p>':'')+'</div>'+activeFilesHTML()+
-      tr('<p class="subtle">流程：导入原文 → 分段联合分析（知识提取 / 关系比较 / 主分类归纳 / 技能整合）→ 校验依据并落盘 → 下一段或下一篇。存量主分类随现有调用分批回填。最多五份文件并行，每份内部按段续接，无需逐篇启动。</p>')+ 
-      '<div class="analysis-overview"><strong>'+(a.completed||0)+' / '+(a.total||0)+tr(' 篇已完成</strong><span>已读 ')+(a.segments||0)+tr(' 段 · 后续按顺序 ')+(counts.queued||0)+tr(' · 手动暂停 ')+(counts.paused||0)+tr(' · 重试 ')+(a.retrying||0)+tr(' · 实际失败 ')+(a.needsReview||0)+tr(' · 有核对说明 ')+(a.withNotes||0)+'</span></div>'+ 
+      tr('<p class="subtle">流程：导入原文 → 分段联合分析（知识提取 / 关系比较 / 主分类归纳 / 技能整合）→ 校验依据并落盘 → 下一段或下一篇。存量主分类随现有调用分批回填。最多五份文件并行，每份内部按段续接，无需逐篇启动。</p>')+
+      '<div class="analysis-overview"><strong>'+(a.completed||0)+' / '+(a.total||0)+tr(' 篇已完成</strong><span>已读 ')+(a.segments||0)+tr(' 段 · 后续按顺序 ')+(counts.queued||0)+tr(' · 手动暂停 ')+(counts.paused||0)+tr(' · 重试 ')+(a.retrying||0)+tr(' · 实际失败 ')+(a.needsReview||0)+tr(' · 有核对说明 ')+(a.withNotes||0)+'</span></div>'+
       (a.mainTagProgress?'<p class="metric">'+tr('主分类覆盖 ')+a.mainTagProgress.covered+'/'+a.mainTagProgress.total+' · '+tr('待归纳 ')+(a.mainTagProgress.total-a.mainTagProgress.reviewed)+' · '+tr('依据不足 ')+a.mainTagProgress.unresolved+'</p>':'')+
-      '<div class="analysis-controls"><button type="button" id="analysis-toggle">'+(a.enabled?tr('暂停全部自动处理'):tr('恢复自动处理'))+tr('</button><button type="button" id="analysis-retry">重试未通过的资料</button></div>')+ 
+      '<div class="analysis-controls"><button type="button" id="analysis-toggle">'+(a.enabled?tr('暂停全部自动处理'):tr('恢复自动处理'))+tr('</button><button type="button" id="analysis-retry">重试未通过的资料</button></div>')+
       (a.cooldownUntil>Date.now()?tr('<p class="metric">模型暂不可用，将在 ')+esc(new Date(a.cooldownUntil).toLocaleTimeString(uiLocale()))+tr(' 后自动重试。</p>'):'')+
       (a.lastError?tr('<details><summary>最近一次处理问题</summary><p class="metric">')+esc(uiError(a.lastError))+'</p></details>':'')+
       state.jobs
@@ -784,7 +819,12 @@ function jobsDialog() {
   );
 }
 async function mcpDialog(){
-  modal(tr('MCP 连接'),'<p>Local stdio MCP: node codex-plugin/readonly-mcp.mjs</p><p>Read-only CLI: node codex-plugin/query.mjs "Example"</p><p>See docs/INTEGRATIONS.md for local host configuration.</p>',null);
+  const control='/api/mcp-control',tunnelId='YOUR_TUNNEL_ID';let token='';
+  modal(tr('MCP 连接'),'<label class="field">Tunnel ID<input id="tunnel-id" value="'+tunnelId+'" readonly></label><label class="field">'+tr('运行 API 密钥（仅本机，不保存）')+'<input id="tunnel-key" type="password" autocomplete="off" spellcheck="false" maxlength="4096"></label><p class="metric">'+tr('仅六个只读工具。密钥不进入网址、日志或浏览器存储。ChatGPT 添加 MCP 时认证选择 None。')+'</p><button type="button" id="tunnel-start">'+tr('启动 Tunnel')+'</button> <button type="button" id="tunnel-stop">'+tr('停止 Tunnel')+'</button> <button type="button" id="tunnel-refresh">'+tr('刷新连接状态')+'</button><p id="tunnel-status" role="status"></p><p class="metric">'+tr('ChatGPT 注册与实际工具调用：尚未验证；不等同于 Tunnel READY。')+'</p><p><a target="_blank" rel="noopener noreferrer" href="https://platform.openai.com/settings/organization/api-keys">'+tr('创建运行密钥：仅 Tunnels Read + Use')+'</a></p><p><a target="_blank" rel="noopener noreferrer" href="https://platform.openai.com/settings/organization/tunnels">'+tr('官方 Tunnel 设置')+'</a> · <a target="_blank" rel="noopener noreferrer" href="http://127.0.0.1:10003/">'+tr('本机独立连接页')+'</a></p>',null);
+  const refresh=async()=>{try{const response=await fetch(control+'/status',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error();const s=await response.json();token=s.token;const el=$('#tunnel-status');if(el)el.textContent='stdio MCP: '+(s.localMcpReady?'6 read-only tools READY':'not ready')+' · Tunnel: '+(s.ready?'READY':s.processRunning?tr('启动中'):tr('未启动'))+(s.error&&!s.ready?' · '+s.error:'');if($('#tunnel-stop'))$('#tunnel-stop').disabled=!s.processRunning;return s;}catch{if($('#tunnel-status'))$('#tunnel-status').textContent=tr('本机连接控制器未运行。请打开“连接Venus私人隧道.cmd”，再刷新状态。');return null;}};
+  $('#tunnel-start').onclick=async()=>{const input=$('#tunnel-key');let key=input.value.trim();if(!key){toast(tr('请先输入运行 API 密钥'));return;}input.value='';try{if(!token&&!await refresh())return;const response=await fetch(control+'/start',{method:'POST',headers:{'Content-Type':'application/json','X-Venus-Token':token},body:JSON.stringify({key,tunnelId}),signal:AbortSignal.timeout(8000)});key='';const s=await response.json();if(!response.ok){$('#tunnel-status').textContent=s.error||tr('连接失败');return;}await refresh();}catch{if($('#tunnel-status'))$('#tunnel-status').textContent=tr('连接失败');}finally{key='';}};
+  $('#tunnel-stop').onclick=async()=>{if(!token&&!await refresh())return;try{await fetch(control+'/stop',{method:'POST',headers:{'Content-Type':'application/json','X-Venus-Token':token},body:'{}',signal:AbortSignal.timeout(5000)});await refresh();}catch{toast(tr('连接失败'));}};
+  $('#tunnel-refresh').onclick=refresh;await refresh();const poll=setInterval(()=>{if(!$('#tunnel-status'))clearInterval(poll);else refresh();},3000);
 }
 async function providerDialog(){
   let info;try{const response=await fetch('/api/analysis-provider');if(!response.ok)throw Error('当前后台尚未加载模型接入接口；现有分析未改动。接口会在下一次正常启动后可用。');info=await response.json();}catch(error){toast(error.message);return;}
@@ -1182,6 +1222,7 @@ function updateGraph() {
     types: state.types,
     settings: state.settings,
     hidden,
+    visibleRelationTypes:relationVisibility.selected,
     mainTag:mainTagSelections[kind]||null,
     visibleIds: new Set(
       nodes.filter((n) => matchesCategories(n, kind)).map((n) => n.id),
@@ -1405,6 +1446,7 @@ const uiIcons = {
   knowledge:
     '<path d="M4 4h6a3 3 0 0 1 2 1 3 3 0 0 1 2-1h6v15h-6a3 3 0 0 0-2 1 3 3 0 0 0-2-1H4V4ZM12 5v15"/>',
   skill: '<path d="m12 3 3 6 6 3-6 3-3 6-3-6-6-3 6-3 3-6Z"/>',
+  concept:'<path d="M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1 2-1 4H9c0-2 0-3-1-4Z"/>',
   network:
     '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="11" cy="19" r="2"/><path d="m7 6 10-1M6 8l4 9m8-10-6 10"/>',
 };

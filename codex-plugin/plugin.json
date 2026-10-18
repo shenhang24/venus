@@ -1,0 +1,11 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "venus-private",
+  "version": "0.4.0",
+  "description": "Local Venus knowledge retrieval and traceable incremental extraction",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true
+    }
+  }
+}

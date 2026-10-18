@@ -1,10 +1,11 @@
 import fs from 'node:fs';import path from 'node:path';
+import {skillMethodUse} from './skill-methods.mjs';
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 const count=(value,fallback,max)=>{const n=value===undefined||value===null?fallback:Number(value);if(!Number.isInteger(n)||n<0||n>max)fail('查询范围无效');return n;};
 export function queryId(id){if(typeof id!=='string'||!/^[A-Za-z0-9_-]{1,120}$/.test(id))fail('仅接受 Venus 节点 ID，不接受文件路径');return id;}
 const normal=s=>String(s||'').normalize('NFKC').toLocaleLowerCase();
 const names=list=>(Array.isArray(list)?list:typeof list==='string'?[list]:[]).map(x=>typeof x==='string'?x:x.name||x.title||'').filter(Boolean);
-const brief=n=>({id:n.id,title:n.title,kind:n.kind,path:n.path,hash:n.hash,version:n.hash||null,updatedAt:n.modifiedAt||n.updatedAt||null,categories:n.categories||[],mainTags:n.mainTags||[],importProvenance:n.importProvenance||[]});
+const brief=n=>({id:n.id,title:n.title,kind:n.kind,path:n.path,hash:n.hash,version:n.hash||null,updatedAt:n.modifiedAt||n.updatedAt||null,categories:n.categories||[],mainTags:n.mainTags||[],importProvenance:n.importProvenance||[],...(n.kind==='skill'?{methodUse:skillMethodUse(n)}:{})});
 export function createReadQuery(store){
  const index=new Map(),auxFile=store.meta?path.join(store.meta,'search-auxiliary.json'):null;
  let aux={version:0,entries:{}},auxSignature=null;
@@ -29,7 +30,7 @@ export function createReadQuery(store){
   if(operation==='search'){
     const q=String(args.q||'').trim();if(q.length>300||(!q&&!args.mainTag&&!args.project&&!args.source&&!args.date&&(!args.kind||args.kind==='all')))fail('请输入关键词或筛选条件按需查询');
     if(args.date&&!/^\d{4}-\d{2}-\d{2}$/.test(args.date))fail('日期筛选须为 YYYY-MM-DD');
-    const kind=args.kind||'all';if(!['all','vault','knowledge','skill'].includes(kind))fail('资料类别无效');if(args.source)queryId(args.source);
+    const kind=args.kind||'all';if(!['all','vault','knowledge','skill','concept'].includes(kind))fail('资料类别无效');if(args.source)queryId(args.source);
     const limit=Math.max(1,count(args.limit,10,25)),offset=count(args.offset,0,100000),terms=q.split(/\s+/).filter(Boolean),regex=terms.map(t=>new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'iu'));
     const datedIds=args.date?store.nodes.filter(n=>(n.importProvenance||[]).some(p=>p.sourceDate?.startsWith(args.date))).map(n=>n.id):null;
     const matches=[];

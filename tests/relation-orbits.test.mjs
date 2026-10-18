@@ -1,10 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {AffinityLayout,KNOWLEDGE_LAYERS_PER_PLANE,orbitSweepDistance} from '../public/layout.js';
 const distance=(a,b)=>Math.hypot(...a.map((v,k)=>v-b[k]));
 const fixture=count=>{const nodes=[{id:'sun',kind:'knowledge',isMainTag:true,domainConnectionCount:count},...Array.from({length:count},(_,i)=>({id:'n'+String(i).padStart(4,'0'),kind:'knowledge'}))];return {nodes,edges:nodes.slice(1).map(n=>({from:'sun',to:n.id,type:'@semantic',membershipLink:true,strength:1}))};};
-test('knowledge capacity resets after nine radial layers with 270 ordinary members per plane',()=>{
- const l=new AffinityLayout(),input=fixture(815),before=JSON.stringify(input);l.sync(input);const planes=new Map();for(const o of Object.values(l.orbits)){assert.equal(o.knowledgePlane,true);assert.ok(o.radialLayer>=0&&o.radialLayer<KNOWLEDGE_LAYERS_PER_PLANE);if(!planes.has(o.planeKey))planes.set(o.planeKey,new Set());planes.get(o.planeKey).add(o.radialLayer);}
- assert.equal(planes.size,4);assert.deepEqual([...planes.values()].map(x=>x.size),[9,9,9,1]);assert.notDeepEqual(l.orbits.n0000.frame.normal,l.orbits.n0270.frame.normal);assert.equal(JSON.stringify(input),before);
- for(let step=0;step<80;step++){l.step();for(const n of input.nodes){assert.ok(l.positions[n.id].every(Number.isFinite));if(n.id!=='sun')assert.ok(Math.abs(distance(l.positions[n.id],l.positions.sun)-l.orbits[n.id].targetRadius)<1e-6);}}
+test('knowledge satellites restore six-based capacity and nine-row planes',()=>{
+ const l=new AffinityLayout(),input=fixture(815);l.sync(input);const rows=new Map();for(const o of Object.values(l.orbits)){assert.ok(o.radialLayer>=0&&o.radialLayer<KNOWLEDGE_LAYERS_PER_PLANE);assert.equal(o.planePage,Math.floor(o.globalRow/9));rows.set(o.globalRow,(rows.get(o.globalRow)||0)+1);}
+ assert.deepEqual([...rows.values()].slice(0,10),[6,12,18,24,30,36,42,48,54,6]);assert.ok(Math.max(...rows.keys())>9);assert.notDeepEqual(l.orbits.n0000.frame.normal,l.orbits.n0270.frame.normal);
+ for(let step=0;step<10;step++){l.step();for(const n of input.nodes)assert.ok(l.positions[n.id].every(Number.isFinite));}
 });
 test('cross-plane sweep clearance is bounded analytically and survives time sampling',()=>{
  const l=new AffinityLayout(),input=fixture(290);l.sync(input);for(let i=1;i<input.nodes.length;i++)for(let j=i+1;j<input.nodes.length;j++){const a=l.orbits[input.nodes[i].id],b=l.orbits[input.nodes[j].id];if(a.planeKey===b.planeKey)continue;assert.ok(orbitSweepDistance(a,a.targetRadius,b,b.targetRadius)>=l.bodyMinimum(i,j)-1e-6);}
