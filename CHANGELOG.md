@@ -1,5 +1,14 @@
 # Changes
 
+## 0.4.1 — 2026-10-18
+
+- Cross-system shared groups pass through other bodies during exterior transfer, without obstacle detours or body-level collision correction. The exemption ends after docking; ordinary resident clearance remains in place.
+- Exterior cruise spends a path-distance budget based on real delta time. Fixed parameter increments and radius-scaled step limits no longer cause abnormal acceleration. Cruise is 6 world units per real second; entry and docking have short speed handoffs.
+- Ordinary resident orbit clocks, relation data, layout and parent spacing are unchanged. No N-body physics is added.
+- Existing eleven English synthetic screenshots are retained. No private source material or history is included.
+
+Targeted checks cover different radii and frame rates, long and variable time steps, the actual fixed-step render clock, pass-through behavior and full-lap docking. These fixes address transfer acceleration and correction-induced instability, not every source of stutter or dense-scene performance.
+
 ## 0.4.0 — 2026-10-18
 
 This second public release adds Concept Cloud and aligns four distinct layers throughout generation contracts, persistence, merging and retrieval. Vault originals remain unchanged. Concepts require scoped user endorsement, preserve complete discussion themes and Reference evidence, and support bounded integration. Unresolved questions remain optional. Knowledge reuse has a measured 95% character-bigram Dice boundary. Skills carry endorsed method scope and limitations rather than ungrounded proficiency claims.

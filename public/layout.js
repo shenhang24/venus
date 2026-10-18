@@ -608,7 +608,8 @@ export class AffinityLayout {
       if(this.freeTransitions?.has(n.id)){const delta=goal.map((x,k)=>x-old[k]),distance=Math.hypot(...delta),limit=Math.max(.01,Math.hypot(...old.map((x,k)=>x-center[k]))*.02);this.positions[n.id]=old.map((x,k)=>x+delta[k]*Math.min(1,limit/(distance||1)));if(distance<=limit)this.freeTransitions.delete(n.id);}else this.positions[n.id]=goal;
       this.velocities[n.id]=this.positions[n.id].map((x,k)=>x-old[k]);
     }
-    advanceSharedTours(this);
+    // Transfer cruise uses wall-clock time; ordinary orbit clocks keep their scale.
+    advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9));
     resolveBodyAvoidance(this);
   }
   lockPlanetOrbits({advance=true}={}){

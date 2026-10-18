@@ -1,11 +1,9 @@
-# Venus 0.4.0
+# Venus 0.4.1
 
-The second public release adds Concept Cloud, scoped user-endorsed skill methods and a measured 95% textual near-duplicate threshold for AI Knowledge. Four separate content and network views preserve original sources, stable identities and Reference evidence.
+This patch fixes abnormal acceleration of shared nodes traveling between systems. Exterior cruise is driven by actual path distance and real delta time at 6 world units per second, rather than a fixed curve parameter or a radius-scaled step. Short entry and docking handoffs preserve smooth transitions.
 
-Forward concept extraction reuses ongoing source reads; missing historical concepts wait until the frozen current batch completes. It does not regenerate completed knowledge or skills. Titles and bodies summarize their content, and unresolved questions remain optional rather than automatic tasks.
+During cross-system transfer, shared groups may pass through other bodies. Obstacle detours, residual collision offsets and collision-pair corrections are bypassed only for those moving groups. Ordinary resident orbit speeds, body clearance and parent spacing remain in place. Node identities, relations and source data are unchanged.
 
-The package includes continuous network orbits, trails, exterior transfer paths, local body avoidance, opt-in relation lines and eleven real English browser captures of a synthetic sample library. Dense-scene behavior and bounded candidate matching retain the limits described in README.md and CHANGELOG.md.
+The source deployment package retains the eleven English synthetic demo screenshots and all 0.4.0 features. No new screenshots, private data, history, logs, credentials or private Git branches are included. The patch does not claim to eliminate all stutter or improve every dense-scene workload.
 
-Full-table history snapshots for classifications and relations stop accumulating; current tables, document versions and checkpoints remain. No existing private history is automatically deleted.
-
-Download the source package, run `npm ci` and `npm run build`, then start with `VENUS_ANALYSIS=0` for an initial local-only session. Windows launcher included. Choose and configure analysis deliberately: subscription allowance and API token charges can be substantial. No credentials or private library is included. No project open-source license has been selected; third-party notices remain in the package.
+Install with `npm ci` and `npm run build`. Start with `VENUS_ANALYSIS=0` for a first local-only session; choose analysis providers and budgets deliberately. See README.md for installation, token costs, privacy and the existing license status.

@@ -1,6 +1,6 @@
 {
-  "version": "0.4.0",
-  "publicBaseCommit": "98f711e2fbba827e8fc704a500b3f200b9bb4070",
+  "version": "0.4.1",
+  "publicBaseCommit": "501961454324ee99a54f94ff83398c50e93493e5",
   "privateContentScan": "Bounded allowlist and sensitive-pattern scan; not a complete security audit.",
   "excluded": [
     "data",
@@ -31,23 +31,23 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 1801,
-      "sha256": "62f9aca4d549c2be914d130c283477d5b29330fa3f2c0bca2c27ad7ccee855b7"
+      "bytes": 2836,
+      "sha256": "ebecf8a093281d87f0165b332f08d707181a9cd4674dbbf20fa2bf869ad6242f"
     },
     {
       "path": "PUBLIC-DOCUMENTS.json",
       "bytes": 604,
-      "sha256": "d2be7a47249a415ff57cb0f0f0ff0f2312b7a1ba81a525e5b2923285219888be"
+      "sha256": "9df80bd6f1385b7a0771764b49eab1f8487d13dbfc751a1fe8ee3a0ec004529d"
     },
     {
       "path": "README.md",
-      "bytes": 19279,
-      "sha256": "ff56f3e75c1b34c223db48d523c8c810244702766fdf1a032220118b64edfe60"
+      "bytes": 19616,
+      "sha256": "f308e8725376c04a7c32884a7fb3148f3b7804f55d15006cd0bf366646fe64ab"
     },
     {
       "path": "RELEASE-NOTES.md",
-      "bytes": 1488,
-      "sha256": "f0f80fd9925a2716f770b66da15f06fbd8ed74d34e99afd8a08bfa8bf0ef0481"
+      "bytes": 1196,
+      "sha256": "bdfbeab5ff0bea209ca9ed8fba20b5d90bb43f4540f37caa4a0701ff5a7b1243"
     },
     {
       "path": "Restart-Venus.cmd",
@@ -97,7 +97,7 @@
     {
       "path": "codex-plugin/plugin.json",
       "bytes": 303,
-      "sha256": "584e543c4b759b00b7d5a464bdb9bcfe69c1dbf2c18b1e0d3b6012ffb5e11f4f"
+      "sha256": "5abe6a15a1ecb2e89d1fddc57f68853d593cb4a2e41a581519469561df7741ae"
     },
     {
       "path": "codex-plugin/query.mjs",
@@ -162,7 +162,7 @@
     {
       "path": "docs/RELEASE-REVIEW.md",
       "bytes": 767,
-      "sha256": "f267e91001d50bfbe79841e8f4649a933be653d5820461bcbc3e50b9ad6f671e"
+      "sha256": "f736fb7139f557b8527a5963740e32bbcae2e1260909316599f9fb94c6e8634e"
     },
     {
       "path": "docs/images/01-vault-sources.jpg",
@@ -232,12 +232,12 @@
     {
       "path": "package-lock.json",
       "bytes": 1513,
-      "sha256": "52416b01b7fbf31deb6e045f4882fe3649aab5480dd9ff96a969443512c47f67"
+      "sha256": "0ad0f0a74ae5a59b24552ae13f0ed8992b514a7e9bc81b89eabf5babd76b0eb0"
     },
     {
       "path": "package.json",
       "bytes": 356,
-      "sha256": "ceee161348843244f11db99f94ee30c29d771fe87f728f52fcb4bb8611929521"
+      "sha256": "697ec00d0e89fcf02641232244857ffe0437b2abdce8beaf4be36d42caefd934"
     },
     {
       "path": "public/app.js",
@@ -246,13 +246,13 @@
     },
     {
       "path": "public/body-avoidance.js",
-      "bytes": 3795,
-      "sha256": "112abb53b465ef93e1ef3f3e4f49f1fc7880a42ac49ccc09c37d3cdefce5c646"
+      "bytes": 4445,
+      "sha256": "34638abf130696e703cc83840aa2d284ccc3142d000b6f6f3146033aaa3995de"
     },
     {
       "path": "public/graph.js",
-      "bytes": 124001,
-      "sha256": "fd9e10a39634d405df07c8bd0b2a1cc94d23720718aa5a3459cb2dab9eafe3df"
+      "bytes": 128015,
+      "sha256": "6afa9ae6c065d42f46d190216a4e3f0585119bfaa01f110723dc76775ce20e96"
     },
     {
       "path": "public/i18n.js",
@@ -271,8 +271,8 @@
     },
     {
       "path": "public/layout.js",
-      "bytes": 58611,
-      "sha256": "1e279068ddbc79f06489bde0c5f75e5f0699513a9431d9a04c27a15e7c42b4a5"
+      "bytes": 58736,
+      "sha256": "4b96396e80e2c47ff5726a562a4e249ab2714f5bf422534302480bac2517fa25"
     },
     {
       "path": "public/main-tags.js",
@@ -301,8 +301,8 @@
     },
     {
       "path": "public/shared-tours.js",
-      "bytes": 15533,
-      "sha256": "5a20657fc7704c4010238b9324d6d707456b00b0bc2626d651c9f3076283f85f"
+      "bytes": 18775,
+      "sha256": "abf87d8cc5f22909edda50a4df01446afa4da976f21b376efa938193e9596db8"
     },
     {
       "path": "public/style.css",
@@ -481,8 +481,8 @@
     },
     {
       "path": "tests/exterior-transfer.test.mjs",
-      "bytes": 3900,
-      "sha256": "bb25f8f11c123146fb6f11ce973d2fcd6d2308ae27a0a6eab7611c9029983873"
+      "bytes": 3901,
+      "sha256": "abcda5a9ec8f64c48e8233639939cbf4ac9d59aac397793f40b9032527f69ee2"
     },
     {
       "path": "tests/final-planet-order.test.mjs",
@@ -618,6 +618,16 @@
       "path": "tests/store.test.mjs",
       "bytes": 16229,
       "sha256": "e68e781f5447d6ad686e262350111f03c69cdb78cc3cbe85dfce96c5d79f655d"
+    },
+    {
+      "path": "tests/transit-pass-through.test.mjs",
+      "bytes": 1541,
+      "sha256": "8804f62941226bed86ec7ca82f433df356026e61adc00561aa6bb9ae8578a281"
+    },
+    {
+      "path": "tests/transit-uniform-speed.test.mjs",
+      "bytes": 6172,
+      "sha256": "ce811357cc0069657e984db92a49268fc109bb83e049ec6e0e1c16de6d0fe248"
     },
     {
       "path": "tests/tunnel-control.test.mjs",

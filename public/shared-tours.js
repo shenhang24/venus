@@ -21,6 +21,41 @@ export function exteriorTransferPoint(route,elapsed,destination,destinationVeloc
   const predicted=destination.map((x,k)=>x+destinationVelocity[k]*remaining);
   return transferHermite(circle(phase+Math.PI*2),tangent(phase+Math.PI*2),predicted,destinationVelocity,local/duration,duration);
 }
+// Cruise is measured in world units per second, never radians or radius-scaled steps.
+export const TRANSFER_LINEAR_SPEED=6;
+export function advanceTransferDistance(route,start,deltaSeconds,sample,{speed=TRANSFER_LINEAR_SPEED,blendEntry=true}={}){
+  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  route.motionSeconds||=0;
+  const t=Math.min(1,(route.motionSeconds+dt*.5)/.5),ease=t*t*(3-2*t);
+  route.sourceStepSeconds||=dt||1/30;
+  const incoming=blendEntry?length(route.velocity)/route.sourceStepSeconds:speed;
+  const currentSpeed=blendEntry?incoming+(speed-incoming)*ease:speed;
+  route.motionSeconds+=dt;
+  const total=2*route.duration+route.lapDuration;
+  let budget=Math.max(0,currentSpeed*dt),elapsed=route.elapsed,position=[...start],travelled=0;
+  // Small distance slices preserve curvature while spending the same time budget.
+  const slices=Math.max(1,Math.ceil(dt*120)),slice=budget/slices;
+  for(let i=0;i<slices;i++){
+    let remaining=slice;
+    for(let join=0;join<4&&remaining>1e-10&&elapsed<total-1e-10;join++){
+      const knots=[route.duration,route.duration+route.lapDuration,total],end=knots.find(k=>k>elapsed+1e-9)||total;
+      const baseline=sample(elapsed),drift=length(minus(baseline,position));
+      if(drift>remaining+1e-9){
+        position=position.map((x,k)=>x+(baseline[k]-x)*remaining/drift);travelled+=remaining;remaining=0;break;
+      }
+      let lo=elapsed,hi=Math.min(end,elapsed+1),q=sample(hi),distance=length(minus(q,position));
+      while(distance<remaining&&hi<end){hi=Math.min(end,elapsed+(hi-elapsed)*2);q=sample(hi);distance=length(minus(q,position));}
+      if(distance<=remaining+1e-10){position=q;elapsed=hi;travelled+=distance;remaining=Math.max(0,remaining-distance);continue;}
+      for(let iteration=0;iteration<30;iteration++){
+        const middle=(lo+hi)/2,p=sample(middle);
+        if(length(minus(p,position))<remaining)lo=middle;else hi=middle;
+      }
+      q=sample((lo+hi)/2);travelled+=length(minus(q,position));position=q;elapsed=(lo+hi)/2;remaining=0;
+    }
+  }
+  route.distanceTravelled=(route.distanceTravelled||0)+travelled;
+  return {position,elapsed,travelled,speed:currentSpeed,complete:elapsed>=total-1e-8};
+}
 function beginExteriorTransfer(layout,g,start,velocity){
   layout.exteriorLaneRanks||=new Map();if(!layout.exteriorLaneRanks.has(g.id))layout.exteriorLaneRanks.set(g.id,layout.exteriorLaneRanks.size);
   const center=layout.positions[layout.coreId]||layout.center||[0,0,0],moving=new Set(layout.sharedOrbits.flatMap(group=>group.memberIndices));
@@ -124,7 +159,10 @@ class Occupancy{
   }
 }
 
-export function advanceSharedTours(layout){
+export function advanceSharedTours(layout,deltaSeconds=1/30){
+  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  // Per-frame choreography exemption, never a persistent collision setting.
+  layout.transferPassThroughIds=new Set();
   if(!layout.sharedOrbits.length)return;
   let active=layout.sharedOrbits.filter(g=>g.tour.stage!=='idle').length;
   for(const g of [...layout.sharedOrbits].filter(g=>g.tour.stage==='idle').sort((a,b)=>a.tour.lastStarted-b.tour.lastStarted||a.id.localeCompare(b.id))){
@@ -136,32 +174,42 @@ export function advanceSharedTours(layout){
     const id=layout.nodes[i].id,p=layout.positions[id],previous=layout.tourObstaclePrevious.get(id),margin=previous?length(minus(p,previous))*3:0;
     entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});layout.tourObstaclePrevious.set(id,[...p]);
   }
-  for(const g of layout.sharedOrbits){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
+  for(const g of layout.sharedOrbits){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];if(s.stage!=='transfer')entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
   const occupancy=new Occupancy(entries);
   for(const g of [...layout.sharedOrbits].sort((a,b)=>a.id.localeCompare(b.id))){
     const s=g.tour,visit=g.visits[s.index],radius=layout.systemExtents[g.index],size=layout.subtreeMaxRadius[g.index],original=[...layout.positions[g.id]];
     if(s.stage==='idle')continue;
+    const transferring=s.stage==='transfer';
+    if(transferring){s.detourDirection=null;s.clearFrames=0;for(const i of g.memberIndices)layout.transferPassThroughIds.add(layout.nodes[i].id);}
     let start=s.world||original,goal,nextAngle=s.angle,nextProgress=s.progress;
     if(s.stage!=='transfer'&&!insideSatelliteTerritory(layout,g,start)){start=original;s.world=null;s.stage='approach';s.progress=0;}
     occupancy.remove(g.id);
     if(s.stage!=='transfer'&&occupancy.blocked(start,start,radius,size)){const recovered=occupancy.recover(start,radius,size);if(insideSatelliteTerritory(layout,g,recovered))start=recovered;}
-    if(s.stage==='orbit'){nextAngle=s.angle+.012;goal=point(layout,visit,nextAngle);}
+    if(s.stage==='orbit'){
+      let rate=.012;
+      if(s.orbitJoin){const t=Math.min(1,(s.orbitJoin.elapsed+dt)/.5),ease=t*t*(3-2*t);rate=s.orbitJoin.rate+(.012-s.orbitJoin.rate)*ease;s.orbitJoin.elapsed+=dt;if(t===1)s.orbitJoin=null;}
+      nextAngle=s.angle+rate;goal=point(layout,visit,nextAngle);
+    }
     else if(s.stage==='transfer'){
       s.exterior||=beginExteriorTransfer(layout,g,start,s.worldVelocity||layout.velocities[g.id]||[0,0,0]);
       const route=s.exterior,destination=g.visits[(s.index+1)%g.visits.length],total=2*route.duration+route.lapDuration;
-      nextProgress=Math.min(total,route.elapsed+1);nextAngle=route.angle+nextProgress*.012;
-      const a=destination.phase+nextAngle,b=point(layout,destination,nextAngle),velocity=destination.frame.u.map((x,k)=>(layout.velocities[destination.host]?.[k]||0)+destination.radius*.012*(-x*Math.sin(a)+destination.frame.v[k]*Math.cos(a)));
-      goal=exteriorTransferPoint(route,nextProgress,b,velocity);
+      const sample=parameter=>{
+        const angle=route.angle+parameter*.012,a=destination.phase+angle,b=point(layout,destination,angle);
+        const velocity=destination.frame.u.map((x,k)=>(layout.velocities[destination.host]?.[k]||0)+destination.radius*.012*(-x*Math.sin(a)+destination.frame.v[k]*Math.cos(a)));
+        return exteriorTransferPoint(route,parameter,b,velocity);
+      };
+      const movement=advanceTransferDistance(route,start,dt,sample);
+      nextProgress=movement.elapsed;nextAngle=route.angle+nextProgress*.012;goal=movement.position;
     }else goal=s.stage==='home'?original:point(layout,visit,s.angle);
     const nextVisit=g.visits[(s.index+1)%g.visits.length],hostMotion=Math.max(length(layout.velocities[visit.host]||[0,0,0]),length(layout.velocities[nextVisit.host]||[0,0,0]));
-    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Math.max(.01,s.exterior.radius*.025,length(s.exterior.velocity)*1.1):Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
+    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Infinity:Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
     const within=p=>s.stage==='transfer'||length(minus(p,layout.center||[0,0,0]))<=layout.tourWorldBound&&insideSatelliteTerritory(layout,g,p)&&(!['orbit','approach'].includes(s.stage)||length(minus(p,layout.positions[visit.host]))>=layout.orbitalClearance(g.index,layout.nodeIndices.get(visit.host))-1e-7);
     const angleAt=p=>{const d=minus(p,layout.positions[visit.host]);return Math.atan2(d.reduce((sum,x,k)=>sum+x*visit.frame.v[k],0),d.reduce((sum,x,k)=>sum+x*visit.frame.u[k],0));};
     const startAngle=angleAt(s.lastRenderedWorld&&s.lastRenderedHost===visit.host&&s.lastRenderedHostPosition?s.lastRenderedWorld.map((x,k)=>x+layout.positions[visit.host][k]-s.lastRenderedHostPosition[k]):start);
     const forward=p=>s.stage!=='orbit'||Math.atan2(Math.sin(angleAt(p)-startAngle),Math.cos(angleAt(p)-startAngle))>=-1e-7;
-    const clear=p=>within(p)&&forward(p)&&!occupancy.blocked(start,p,radius,size);
+    const clear=p=>transferring||(within(p)&&forward(p)&&!occupancy.blocked(start,p,radius,size));
     let candidate=start.map((x,k)=>x+delta[k]*Math.min(1,maxStep/(distance||1))),accepted=clear(candidate);const goalClear=accepted;
-    if(s.detourDirection&&accepted){s.clearFrames=(s.clearFrames||0)+1;if(s.clearFrames<3)accepted=false;else{s.detourDirection=null;s.clearFrames=0;}}
+    if(!transferring&&s.detourDirection&&accepted){s.clearFrames=(s.clearFrames||0)+1;if(s.clearFrames<3)accepted=false;else{s.detourDirection=null;s.clearFrames=0;}}
     if(!accepted){
       if(!goalClear)s.clearFrames=0;
       const tangent=visit.frame.u.map((x,k)=>-x*Math.sin(startAngle)+visit.frame.v[k]*Math.cos(startAngle)),radial=visit.frame.u.map((x,k)=>x*Math.cos(startAngle)+visit.frame.v[k]*Math.sin(startAngle));
@@ -171,15 +219,15 @@ export function advanceSharedTours(layout){
     if(!accepted)candidate=start;
     s.blocked=!accepted;s.world=candidate;s.worldVelocity=minus(candidate,start);s.lastRenderedWorld=[...candidate];s.lastRenderedHost=visit.host;s.lastRenderedHostPosition=[...layout.positions[visit.host]];
     const wasOrbit=s.stage==='orbit';
-    if(wasOrbit&&accepted){const progress=Math.max(0,Math.atan2(Math.sin(angleAt(candidate)-startAngle),Math.cos(angleAt(candidate)-startAngle)));s.angle+=progress;if(s.angle-(s.orbitStartAngle||0)>=Math.PI*2-1e-8){s.completed.push(visit.host);s.roundVisits++;s.completed=s.completed.slice(-g.visits.length*3);s.stage='transfer';s.exterior=beginExteriorTransfer(layout,g,candidate,s.worldVelocity);s.progress=0;}}
+    if(wasOrbit&&accepted){const progress=Math.max(0,Math.atan2(Math.sin(angleAt(candidate)-startAngle),Math.cos(angleAt(candidate)-startAngle)));s.angle+=progress;if(s.angle-(s.orbitStartAngle||0)>=Math.PI*2-1e-8){s.completed.push(visit.host);s.roundVisits++;s.completed=s.completed.slice(-g.visits.length*3);s.stage='transfer';s.exterior=beginExteriorTransfer(layout,g,candidate,s.worldVelocity);s.progress=0;for(const i of g.memberIndices)layout.transferPassThroughIds.add(layout.nodes[i].id);}}
     const arrived=length(minus(candidate,goal))<1e-5;
     if(arrived&&!wasOrbit){
       if(s.stage==='approach'){s.stage='orbit';s.orbitStartAngle=s.angle;}
       else if(s.stage==='home'){s.stage='idle';s.world=null;}
-      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
+      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.orbitJoin={rate:Math.min(.012,length(s.worldVelocity)/(g.visits[s.index].radius||1)),elapsed:0};s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
     }
     const shift=minus(candidate,original);
     for(const i of g.memberIndices){const id=layout.nodes[i].id;layout.positions[id]=layout.positions[id].map((x,k)=>x+shift[k]);}
-    occupancy.add({id:g.id,position:candidate,radius,size});
+    if(!layout.transferPassThroughIds.has(g.id))occupancy.add({id:g.id,position:candidate,radius,size});
   }
 }

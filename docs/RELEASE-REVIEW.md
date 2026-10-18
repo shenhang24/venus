@@ -1,4 +1,4 @@
-# Release review — 0.4.0
+# Release review — 0.4.1
 
 Only program roots, deployment files, tests with synthetic fixtures, templates, previously reviewed English documentation, dependency notices and eleven synthetic demo captures were selected. Runtime data, exports, evidence logs, history, credentials, private tunnel profiles and personal Git branches were excluded. Publication-specific path and tunnel placeholders were normalized without changing the running private application.
 

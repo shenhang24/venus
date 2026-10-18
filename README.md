@@ -61,11 +61,11 @@ Each layer has a readable content view and a separate network view. Titles and p
 
 Networks support orbit, zoom, local node focus and source navigation. Stable connection counts select the primary center; ties retain the current center and promotion transitions smoothly. Relation types are opt-in multi-select filters; hiding an edge does not delete it.
 
-Continuous hierarchical orbits, bounded trails and exterior transfer channels show motion without an N-body physics simulation. Local-radius spacing permits group envelopes to overlap, with body-level avoidance. Fixed-orbit planets and temporarily offset satellites have different roles. Target speeds are independent; close approaches can couple actual speeds. Targeted synthetic checks are not a universal guarantee of collision-free dense scenes or constant frame rate.
+Continuous hierarchical orbits, bounded trails and exterior transfer channels show motion without an N-body physics simulation. During cross-system transfers, moving shared groups pass through other bodies without collision correction. Cruise advances by path distance and real elapsed time at 6 world units per second, with short entry/docking blends. It no longer speeds up with exterior radius. Ordinary resident orbit speeds and body clearance remain separate. Local-radius spacing permits group envelopes to overlap, with body-level avoidance. Fixed-orbit planets and temporarily offset satellites have different roles. Target speeds are independent; close approaches can couple actual speeds. Targeted synthetic checks are not a universal guarantee of collision-free dense scenes or constant frame rate.
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.4.0**. See [changes](CHANGELOG.md).
+Current release: **0.4.1**. See [changes](CHANGELOG.md).
 
 ## Install and start
 
