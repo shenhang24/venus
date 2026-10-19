@@ -12,9 +12,14 @@ export function createExteriorTransfer({start,velocity,center,frame,radius,angle
 }
 export function exteriorTransferPoint(route,elapsed,destination,destinationVelocity){
   const {center,frame,radius,phase,duration,lapDuration}=route,omega=Math.PI*2/lapDuration;
-  const circle=a=>center.map((x,k)=>x+radius*(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a)));
-  const tangent=a=>frame.u.map((x,k)=>radius*omega*(-x*Math.sin(a)+frame.v[k]*Math.cos(a)));
-  if(elapsed<=duration)return transferHermite(route.start,route.velocity,circle(phase),tangent(phase),elapsed/duration,duration);
+  const circle=a=>{const c=Math.cos(a),s=Math.sin(a);return center.map((x,k)=>x+radius*(frame.u[k]*c+frame.v[k]*s));};
+  const tangent=a=>{const c=Math.cos(a),s=Math.sin(a);return frame.u.map((x,k)=>radius*omega*(-x*s+frame.v[k]*c));};
+  if(elapsed<=duration){
+    // The entrance curve is static for the entire transit. Cache its cubic
+    // coefficients instead of rebuilding endpoint vectors for every query.
+    if(!route.entryPolynomial){const end=circle(phase),velocity=tangent(phase);route.entryPolynomial=route.start.map((x,k)=>[2*x+duration*route.velocity[k]-2*end[k]+duration*velocity[k],-3*x-2*duration*route.velocity[k]+3*end[k]-duration*velocity[k],duration*route.velocity[k],x]);}
+    const t=elapsed/duration;return route.entryPolynomial.map(p=>((p[0]*t+p[1])*t+p[2])*t+p[3]);
+  }
   if(elapsed<=duration+lapDuration)return circle(phase+omega*(elapsed-duration));
   const local=Math.min(duration,elapsed-duration-lapDuration),remaining=duration-local;
   // Predict the moving docking endpoint, rather than chasing its old position.
@@ -24,7 +29,7 @@ export function exteriorTransferPoint(route,elapsed,destination,destinationVeloc
 // Cruise is measured in world units per second, never radians or radius-scaled steps.
 export const TRANSFER_LINEAR_SPEED=6;
 export function advanceTransferDistance(route,start,deltaSeconds,sample,{speed=TRANSFER_LINEAR_SPEED,blendEntry=true}={}){
-  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  const dt=Math.max(0,Number.isFinite(deltaSeconds)?deltaSeconds:0);
   route.motionSeconds||=0;
   const t=Math.min(1,(route.motionSeconds+dt*.5)/.5),ease=t*t*(3-2*t);
   route.sourceStepSeconds||=dt||1/30;
@@ -46,11 +51,15 @@ export function advanceTransferDistance(route,start,deltaSeconds,sample,{speed=T
       let lo=elapsed,hi=Math.min(end,elapsed+1),q=sample(hi),distance=length(minus(q,position));
       while(distance<remaining&&hi<end){hi=Math.min(end,elapsed+(hi-elapsed)*2);q=sample(hi);distance=length(minus(q,position));}
       if(distance<=remaining+1e-10){position=q;elapsed=hi;travelled+=distance;remaining=Math.max(0,remaining-distance);continue;}
-      for(let iteration=0;iteration<30;iteration++){
-        const middle=(lo+hi)/2,p=sample(middle);
-        if(length(minus(p,position))<remaining)lo=middle;else hi=middle;
+      // Distance slices are short and smooth: a bracketed secant normally
+      // resolves them in a few samples. Retain bisection as a safe fallback.
+      let lowDistance=drift,highDistance=distance,parameter=(lo+hi)/2,resolved=false;
+      for(let iteration=0;iteration<12;iteration++){
+        const fraction=(remaining-lowDistance)/(highDistance-lowDistance);parameter=lo+(hi-lo)*fraction;if(!(parameter>lo&&parameter<hi))parameter=(lo+hi)/2;
+        q=sample(parameter);const d=length(minus(q,position));if(Math.abs(d-remaining)<=1e-9){resolved=true;break;}if(d<remaining){lo=parameter;lowDistance=d;}else{hi=parameter;highDistance=d;}
       }
-      q=sample((lo+hi)/2);travelled+=length(minus(q,position));position=q;elapsed=(lo+hi)/2;remaining=0;
+      if(!resolved){for(let iteration=0;iteration<30;iteration++){parameter=(lo+hi)/2;q=sample(parameter);const d=length(minus(q,position));if(d<remaining)lo=parameter;else hi=parameter;}parameter=(lo+hi)/2;q=sample(parameter);}
+      travelled+=length(minus(q,position));position=q;elapsed=parameter;remaining=0;
     }
   }
   route.distanceTravelled=(route.distanceTravelled||0)+travelled;
@@ -63,7 +72,8 @@ function beginExteriorTransfer(layout,g,start,velocity){
   // Bounds are read only: animation channels never become satellite reach or packing envelopes.
   const extent=Math.max(...layout.sharedOrbits.map(group=>layout.systemExtents[group.index])),lane=layout.exteriorLaneRanks.get(g.id);
   const radius=bound+(lane+1)*(2*extent+TOUR_SURFACE_GAP)+extent;
-  return createExteriorTransfer({start,velocity,center,frame:g.visits[0].frame,radius,angle:g.tour.angle});
+  const scale=layout.motionStepScale||1,route=createExteriorTransfer({start,velocity:velocity.map(x=>x/scale),center,frame:g.visits[0].frame,radius,angle:g.tour.angle});
+  route.sourceStepSeconds=(1/30)/Math.max(layout.timeScale||1,1e-9);return route;
 }
 // The entire moving subtree must remain inside its owner's orbital territory.
 // A transfer is allowed only when that territory also contains the route.
@@ -160,7 +170,8 @@ class Occupancy{
 }
 
 export function advanceSharedTours(layout,deltaSeconds=1/30){
-  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  const dt=Math.max(0,Number.isFinite(deltaSeconds)?deltaSeconds:0);
+  const stepScale=layout.motionStepScale||1;
   // Per-frame choreography exemption, never a persistent collision setting.
   layout.transferPassThroughIds=new Set();
   if(!layout.sharedOrbits.length)return;
@@ -169,10 +180,9 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(active>=12)break;const s=g.tour;s.stage='approach';s.index=Math.max(0,g.visits.findIndex(v=>v.host===layout.orbits[g.id].host));s.orbitStartAngle=s.angle;s.progress=0;s.roundVisits=0;s.lastStarted=layout.tourDispatchCounter=(layout.tourDispatchCounter||0)+1;active++;
   }
   const moving=new Set(layout.sharedOrbits.flatMap(g=>g.memberIndices)),entries=[];
-  layout.tourObstaclePrevious||=new Map();
   for(let i=0;i<layout.nodes.length;i++)if(!moving.has(i)){
-    const id=layout.nodes[i].id,p=layout.positions[id],previous=layout.tourObstaclePrevious.get(id),margin=previous?length(minus(p,previous))*3:0;
-    entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});layout.tourObstaclePrevious.set(id,[...p]);
+    const id=layout.nodes[i].id,p=layout.positions[id];
+    entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});
   }
   for(const g of layout.sharedOrbits){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];if(s.stage!=='transfer')entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
   const occupancy=new Occupancy(entries);
@@ -188,12 +198,13 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(s.stage==='orbit'){
       let rate=.012;
       if(s.orbitJoin){const t=Math.min(1,(s.orbitJoin.elapsed+dt)/.5),ease=t*t*(3-2*t);rate=s.orbitJoin.rate+(.012-s.orbitJoin.rate)*ease;s.orbitJoin.elapsed+=dt;if(t===1)s.orbitJoin=null;}
-      nextAngle=s.angle+rate;goal=point(layout,visit,nextAngle);
+      nextAngle=s.angle+rate*stepScale;goal=point(layout,visit,nextAngle);
     }
     else if(s.stage==='transfer'){
       s.exterior||=beginExteriorTransfer(layout,g,start,s.worldVelocity||layout.velocities[g.id]||[0,0,0]);
       const route=s.exterior,destination=g.visits[(s.index+1)%g.visits.length],total=2*route.duration+route.lapDuration;
       const sample=parameter=>{
+        if(parameter<=route.duration+route.lapDuration)return exteriorTransferPoint(route,parameter,null,null);
         const angle=route.angle+parameter*.012,a=destination.phase+angle,b=point(layout,destination,angle);
         const velocity=destination.frame.u.map((x,k)=>(layout.velocities[destination.host]?.[k]||0)+destination.radius*.012*(-x*Math.sin(a)+destination.frame.v[k]*Math.cos(a)));
         return exteriorTransferPoint(route,parameter,b,velocity);
@@ -202,7 +213,7 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
       nextProgress=movement.elapsed;nextAngle=route.angle+nextProgress*.012;goal=movement.position;
     }else goal=s.stage==='home'?original:point(layout,visit,s.angle);
     const nextVisit=g.visits[(s.index+1)%g.visits.length],hostMotion=Math.max(length(layout.velocities[visit.host]||[0,0,0]),length(layout.velocities[nextVisit.host]||[0,0,0]));
-    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Infinity:Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
+    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Infinity:Math.max(size*.2*stepScale+hostMotion*2+visit.radius*.018*stepScale,distance*(1-Math.pow(.875,stepScale)),.01*stepScale);
     const within=p=>s.stage==='transfer'||length(minus(p,layout.center||[0,0,0]))<=layout.tourWorldBound&&insideSatelliteTerritory(layout,g,p)&&(!['orbit','approach'].includes(s.stage)||length(minus(p,layout.positions[visit.host]))>=layout.orbitalClearance(g.index,layout.nodeIndices.get(visit.host))-1e-7);
     const angleAt=p=>{const d=minus(p,layout.positions[visit.host]);return Math.atan2(d.reduce((sum,x,k)=>sum+x*visit.frame.v[k],0),d.reduce((sum,x,k)=>sum+x*visit.frame.u[k],0));};
     const startAngle=angleAt(s.lastRenderedWorld&&s.lastRenderedHost===visit.host&&s.lastRenderedHostPosition?s.lastRenderedWorld.map((x,k)=>x+layout.positions[visit.host][k]-s.lastRenderedHostPosition[k]):start);
@@ -224,7 +235,7 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(arrived&&!wasOrbit){
       if(s.stage==='approach'){s.stage='orbit';s.orbitStartAngle=s.angle;}
       else if(s.stage==='home'){s.stage='idle';s.world=null;}
-      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.orbitJoin={rate:Math.min(.012,length(s.worldVelocity)/(g.visits[s.index].radius||1)),elapsed:0};s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
+      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.orbitJoin={rate:Math.min(.012,length(s.worldVelocity)/(g.visits[s.index].radius||1)/stepScale),elapsed:0};s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
     }
     const shift=minus(candidate,original);
     for(const i of g.memberIndices){const id=layout.nodes[i].id;layout.positions[id]=layout.positions[id].map((x,k)=>x+shift[k]);}

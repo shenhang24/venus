@@ -3,7 +3,7 @@ import net from 'node:net';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-export const VENUS_TUNNEL_ID='YOUR_TUNNEL_ID';
+export const VENUS_TUNNEL_ID='tunnel_6ad337c0ac7081918aa89f6eba324024';
 export function classifyTunnelLog(text){
  // Match an explicit HTTP status or authentication error, never digits in
  // timestamps, request identifiers, durations, or successful log messages.

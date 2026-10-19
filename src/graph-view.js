@@ -1,10 +1,22 @@
 import { AffinityLayout } from "/layout.js";
+import { MotionTrails } from "/motion-trails.js";
+import { NetworkAnimationClock } from "/animation-clock.js";
+import { heatText } from "/i18n.js";
 import { shortNodeLabel, labelDetail, labelLimits, showNodeLabel } from "/network-labels.js";
-import { configureNetworkControls, followSelectedPosition, overviewDistance, mainTagRegion } from "/network-controls.js";
+import { configureNetworkControls, followSelectedPosition, overviewDistance, mainTagRegion, nodeFocusRegion } from "/network-controls.js";
 import { buildMainTagGraph, matchesMainTag, effectiveDegrees, displayedRadius } from "/main-tags.js";
 const layoutSessions = new Map();
+const replayEpochs = new Map();
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+export function proceduralStarMaterial(){return new THREE.ShaderMaterial({depthWrite:true,depthTest:true,toneMapped:false,
+  vertexShader:'varying vec2 starUv;varying vec3 starColor;void main(){starUv=uv;starColor=vec3(1.0);\n#ifdef USE_INSTANCING_COLOR\nstarColor=instanceColor;\n#endif\nvec4 center=modelViewMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0);float radius=length(instanceMatrix[0].xyz);center.xy+=position.xy*radius;gl_Position=projectionMatrix*center;}',
+  fragmentShader:'varying vec2 starUv;varying vec3 starColor;void main(){vec2 p=starUv*2.0-1.0;float r2=dot(p,p);if(r2>1.0)discard;float shade=0.86+0.14*sqrt(max(0.0,1.0-r2));gl_FragColor=vec4(starColor*shade,1.0);\n#include <colorspace_fragment>\n}'
+});}
+export function raycastProceduralStars(raycaster,hits){
+  const matrix=new THREE.Matrix4(),center=new THREE.Vector3(),scale=new THREE.Vector3(),sphere=new THREE.Sphere(),hit=new THREE.Vector3();
+  for(let i=0;i<this.count;i++){this.getMatrixAt(i,matrix);matrix.premultiply(this.matrixWorld);center.setFromMatrixPosition(matrix);scale.setFromMatrixScale(matrix);sphere.set(center,Math.max(Math.abs(scale.x),Math.abs(scale.y),Math.abs(scale.z)));if(!raycaster.ray.intersectSphere(sphere,hit))continue;const distance=raycaster.ray.origin.distanceTo(hit);if(distance<raycaster.near||distance>raycaster.far)continue;hits.push({distance,point:hit.clone(),object:this,instanceId:i});}
+}
 export class Network {
   constructor(
     host,
@@ -50,6 +62,9 @@ export class Network {
     this.hidden = new Set();
     this.frames = [];
     this.last = performance.now();
+    this.animationClock=new NetworkAnimationClock(this.last);
+    this.visibilityClock=()=>{this.lastSimulationFrame=performance.now();this.last=this.lastSimulationFrame;this.animationClock.resetFrame(this.last);};
+    document.addEventListener('visibilitychange',this.visibilityClock);
     this.frame = 0;
     this.resize = new ResizeObserver(() => {
       const { width, height } = host.getBoundingClientRect();
@@ -125,15 +140,17 @@ export class Network {
     m.geometry.dispose();
     m.material.dispose();
   }
-  update({ nodes, edges, positions, types, settings, hidden, visibleIds, mainTag=this.mainTag,layoutEpoch=0 }) {
+  update({ nodes, edges, positions, types, settings, hidden, visibleRelationTypes=null,visibleIds, mainTag=this.mainTag,layoutEpoch=0 }) {
+    const syntheticBenchmark=nodes[0]?.id?.startsWith('bench-');
     const grouped=buildMainTagGraph(nodes.filter(n=>!n.isMainTag),edges.filter(e=>!e.semanticAnchor),positions,settings.distance);
     nodes=grouped.nodes;edges=grouped.edges;positions=grouped.positions;this.mainTag=mainTag||null;
     if(visibleIds){visibleIds=new Set(visibleIds);for(const n of nodes)if(n.isMainTag)visibleIds.add(n.id);}
-    const key = nodes[0]?.id?.startsWith("bench-")
+    const key = syntheticBenchmark
       ? "benchmark/" + nodes.length
       : this.layoutKey;
-    if(this.layoutEpoch!==layoutEpoch){layoutSessions.delete(key);this.layoutEpoch=layoutEpoch;this.selected=null;this.followPosition=null;this.primaryFollowPosition=null;this.revealedMainTag=null;this.initialFit=false;this.simulationFit=false;}
+    if(this.layoutEpoch!==layoutEpoch){layoutSessions.delete(key);this.layoutEpoch=layoutEpoch;this.replayPending=layoutEpoch>0;this.expansion=null;if(this.trailMesh)this.disposeMesh(this.trailMesh);this.trailMesh=null;this.motionTrails=null;this.selected=null;this.followPosition=null;this.primaryFollowPosition=null;this.revealedMainTag=null;this.initialFit=false;this.simulationFit=false;}
     if (!layoutSessions.has(key)) layoutSessions.set(key, new AffinityLayout());
+    const previousLayout=this.layout;
     this.layout = layoutSessions.get(key);
     const previousLayoutSignature=this.layout.signature;
     this.layout.sync({
@@ -145,9 +162,10 @@ export class Network {
       baseRadius:settings.baseRadius,
     });
     // Place new/grown spheres safely before exposing their first rendered frame.
-    if(this.layout.signature!==previousLayoutSignature)this.layout.step();
+    if(this.layout.signature!==previousLayoutSignature&&!this.animationClock.paused)this.layout.step();
     positions = this.layout.positions;
     this.nodes = nodes;
+    this.updateReplayPositions(this.animationClock.now);
     this.nodeById=new Map(nodes.map(n=>[n.id,n]));
     this.visibleIds = visibleIds;
     this.renderNodes = visibleIds
@@ -157,7 +175,8 @@ export class Network {
     this.positions = positions;
     this.types = types;
     this.settings = settings;
-    this.hidden = hidden || new Set();
+    this.visibleRelationTypes=visibleRelationTypes;
+    this.hidden = visibleRelationTypes?new Set([...types,{id:'@semantic'}].filter(t=>!visibleRelationTypes.has(t.id)).map(t=>t.id)):hidden||new Set([...types,{id:'@semantic'}].map(t=>t.id));
     this.disposeMesh(this.mesh);
     this.disposeMesh(this.glow);
     for (const m of this.edgeMeshes || []) this.disposeMesh(m);
@@ -166,12 +185,15 @@ export class Network {
     this.radii = {};
     this.degree = degree;
     const dummy = new THREE.Object3D();
+    const pointStars=this.renderNodes.length>2000;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,pointStars?1:2));
     this.mesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(1, 10, 8),
-      new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      pointStars?new THREE.PlaneGeometry(2,2):new THREE.SphereGeometry(1,10,8),
+      pointStars?proceduralStarMaterial():new THREE.MeshBasicMaterial({ color: "#ffffff" }),
       this.renderNodes.length,
     );
-    this.mesh.material.onBeforeCompile=shader=>{
+    if(pointStars)this.mesh.raycast=raycastProceduralStars;
+    else this.mesh.material.onBeforeCompile=shader=>{
       shader.vertexShader='varying vec3 venusSurface;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvenusSurface=position;');
       shader.fragmentShader='varying vec3 venusSurface;\n'+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb *= 0.86 + 0.14 * (0.5 + 0.5 * sin(atan(venusSurface.z,venusSurface.x)*3.0+venusSurface.y*6.0));');
     };
@@ -181,7 +203,9 @@ export class Network {
       new THREE.ShaderMaterial({
         transparent:true, depthWrite:false, depthTest:true,
         blending:THREE.AdditiveBlending, toneMapped:false,
+        uniforms:{viewportHeight:{value:Math.max(1,this.host.clientHeight)}},
         vertexShader:`
+          uniform float viewportHeight;
           varying vec2 haloUv;
           varying vec3 haloColor;
           void main() {
@@ -193,7 +217,10 @@ export class Network {
             #endif
             vec4 center = modelViewMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0);
             float radius = length(instanceMatrix[0].xyz);
-            center.xy += position.xy * radius * 8.0;
+            // Keep a six-CSS-pixel light visible at galactic overview scales.
+            // The physical sphere and all orbital distances remain unchanged.
+            float minimumDiameter = 12.0 * max(-center.z,0.0001) / (projectionMatrix[1][1] * max(viewportHeight,1.0));
+            center.xy += position.xy * max(radius * 8.0,minimumDiameter);
             gl_Position = projectionMatrix * center;
           }
         `,
@@ -231,6 +258,7 @@ export class Network {
     if(this.mesh.instanceColor)this.mesh.instanceColor.needsUpdate=true;
     this.mesh.computeBoundingSphere();
     this.scene.add(this.mesh);
+    this.syncMotionTrails();
     this.glow.instanceMatrix.needsUpdate=true;
     if(this.glow.instanceColor)this.glow.instanceColor.needsUpdate=true;
     // The billboard extends beyond its core sphere, so do not cull it using core bounds.
@@ -340,6 +368,7 @@ export class Network {
       this.fit();
       this.initialFit = true;
     }
+    if(previousLayout!==this.layout){this.lastSimulationFrame=performance.now();this.animationClock.resetFrame(this.lastSimulationFrame);}
   }
   refreshLabelCandidates(now) {
     if (!this.positions || now - (this.lastLabelCandidates || 0) < 180) return;
@@ -365,16 +394,53 @@ export class Network {
       if (!node) return;
       entry.el.dataset.nodeId = node.id;
       entry.el.textContent = shortNodeLabel(node, 20);
-      entry.el.title = node.title + (node.path ? '\n' + node.path : '') + (node.heat?.name ? '\n'+node.heat.name+' · '+node.heat.label+'\n'+node.heat.reason : '');
+      const heat=node.heat?.name?heatText(node.heat):null;
+      entry.el.title = node.title + (node.path ? '\n' + node.path : '') + (heat ? '\n'+heat.name+' · '+heat.label+'\n'+heat.reason : '');
       entry.el.style.borderColor=node.heat?.color||'#eeeeee';
       entry.el.setAttribute('aria-label',node.title);
     });
   }
+  syncMotionTrails(){
+    const large=this.renderNodes.length>2000,samples=large?4:8;
+    if(!this.motionTrails||this.motionTrails.samples!==samples)this.motionTrails=new MotionTrails({samples,sampleSpacing:large?1.4:1.05,uploadMs:1000/(large?20:30)});
+    const changed=this.motionTrails.sync(this.renderNodes,this.radii,n=>{const c=new THREE.Color(n.heat?.color||'#eeeeee');if(this.mainTag&&!matchesMainTag(n,this.mainTag))c.multiplyScalar(.18);if(this.highlightIds?.size&&!this.highlightIds.has(n.id))c.multiplyScalar(.24);return [c.r,c.g,c.b];});
+    if(changed||!this.trailMesh){
+      this.disposeMesh(this.trailMesh);const geometry=new THREE.InstancedBufferGeometry();
+      geometry.setAttribute('position',new THREE.Float32BufferAttribute([-.5,0,0,.5,0,0,-.5,1,0,.5,1,0],3));geometry.setIndex([0,1,2,2,1,3]);geometry.instanceCount=this.renderNodes.length*this.motionTrails.samples;
+      const points=new THREE.InstancedInterleavedBuffer(this.motionTrails.positions,6).setUsage(THREE.DynamicDrawUsage),colors=new THREE.InstancedInterleavedBuffer(this.motionTrails.colors,8).setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute('instanceStart',new THREE.InterleavedBufferAttribute(points,3,0));geometry.setAttribute('instanceEnd',new THREE.InterleavedBufferAttribute(points,3,3));geometry.setAttribute('startColor',new THREE.InterleavedBufferAttribute(colors,4,0));geometry.setAttribute('endColor',new THREE.InterleavedBufferAttribute(colors,4,4));geometry.setAttribute('instanceWidth',new THREE.InstancedBufferAttribute(this.motionTrails.widths,1).setUsage(THREE.DynamicDrawUsage));
+      this.trailMesh=new THREE.Mesh(geometry,new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+        vertexShader:'attribute vec3 instanceStart;attribute vec3 instanceEnd;attribute vec4 startColor;attribute vec4 endColor;attribute float instanceWidth;varying vec4 trailColor;varying float across;void main(){vec4 a=viewMatrix*vec4(instanceStart,1.0);vec4 b=viewMatrix*vec4(instanceEnd,1.0);vec2 delta=b.xy-a.xy;vec2 normal=length(delta)>0.000001?normalize(vec2(-delta.y,delta.x)):vec2(1.0,0.0);vec4 p=mix(a,b,position.y);p.xy+=normal*position.x*instanceWidth;gl_Position=projectionMatrix*p;trailColor=mix(startColor,endColor,position.y);across=position.x;}',
+        fragmentShader:'varying vec4 trailColor;varying float across;void main(){float softness=1.0-smoothstep(0.25,0.5,abs(across));float alpha=trailColor.a*softness;if(alpha<0.001)discard;gl_FragColor=vec4(trailColor.rgb,alpha);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}'
+      }));this.trailMesh.frustumCulled=false;this.trailMesh.renderOrder=0;this.scene.add(this.trailMesh);
+    }
+    this.trailMesh.geometry.attributes.instanceWidth.needsUpdate=true;
+  }
+  updateMotionTrails(now){
+    if(this.motionTrails?.update(this.positions,now)){this.trailMesh.geometry.attributes.instanceStart.data.needsUpdate=true;this.trailMesh.geometry.attributes.startColor.data.needsUpdate=true;}
+  }
+  updateReplayPositions(now){
+    if(!this.layout)return false;
+    if(this.replayPending){
+      const key='venus-expansion:'+this.layoutKey;let previous=replayEpochs.get(key);
+      try{if(typeof sessionStorage!=='undefined')previous=Number(sessionStorage.getItem(key))||previous;}catch{}
+      if(previous!==this.layoutEpoch){this.expansion={start:now,duration:5000};replayEpochs.set(key,this.layoutEpoch);try{if(typeof sessionStorage!=='undefined')sessionStorage.setItem(key,String(this.layoutEpoch));}catch{}}
+      this.replayPending=false;
+    }
+    if(!this.expansion){this.positions=this.layout.positions;return false;}
+    const t=Math.min(1,Math.max(0,(now-this.expansion.start)/this.expansion.duration)),ease=t*t*(3-2*t),origin=this.layout.positions[this.layout.coreId]||this.layout.center||[0,0,0];
+    this.positions=Object.fromEntries(this.nodes.map(n=>[n.id,this.layout.positions[n.id].map((x,k)=>origin[k]+(x-origin[k])*ease)]));
+    if(t===1){this.expansion=null;this.positions=this.layout.positions;}return true;
+  }
   updatePoses() {
     const d = this.pose;
+    let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity,padding=1;
     for (let i = 0; i < this.renderNodes.length; i++) {
       const n = this.renderNodes[i];
-      d.position.fromArray(this.positions[n.id]);
+      const p=this.positions[n.id];
+      minX=Math.min(minX,p[0]);minY=Math.min(minY,p[1]);minZ=Math.min(minZ,p[2]);
+      maxX=Math.max(maxX,p[0]);maxY=Math.max(maxY,p[1]);maxZ=Math.max(maxZ,p[2]);padding=Math.max(padding,this.radii[n.id]);
+      d.position.fromArray(p);
       d.rotation.set(.15,this.layout.spinAngle(n.id),.12);
       d.scale.setScalar(this.radii[n.id]);
       d.updateMatrix();
@@ -383,7 +449,11 @@ export class Network {
     }
     if (this.mesh) {
       this.mesh.instanceMatrix.needsUpdate = true;
-      this.mesh.computeBoundingSphere();
+      // One conservative bound collected during the pose upload, reused for
+      // every edge batch. No second per-instance matrix/sphere traversal.
+      this.mesh.boundingSphere||=new THREE.Sphere();
+      if(this.renderNodes.length){this.mesh.boundingSphere.center.set((minX+maxX)/2,(minY+maxY)/2,(minZ+maxZ)/2);this.mesh.boundingSphere.radius=Math.hypot(maxX-minX,maxY-minY,maxZ-minZ)/2+padding;}
+      else this.mesh.boundingSphere.makeEmpty();
     }
     if(this.glow)this.glow.instanceMatrix.needsUpdate=true;
     for (const mesh of this.edgeMeshes || []) {
@@ -404,7 +474,8 @@ export class Network {
         mesh.setMatrixAt(i, d.matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
-      mesh.computeBoundingSphere();
+      mesh.boundingSphere||=new THREE.Sphere();
+      mesh.boundingSphere.copy(this.mesh.boundingSphere);
     }
     if (this.selected && this.positions[this.selected]) {
       this.a.fromArray(this.positions[this.selected]);
@@ -441,7 +512,7 @@ export class Network {
   focusMainTag(name){
     const region=mainTagRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,mainTag:name,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});if(!region)return false;
     const center=new THREE.Vector3().fromArray(region.center),direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
-    this.selected=null;this.followPosition=null;this.ring.visible=false;this.overviewActive=false;this.localFocusAnchorId=region.anchorId;this.localFollowPosition=center.clone();this.revealedMainTag=region.anchorId;this.lastLabelCandidates=0;this.setHighlight(region.ids);
+    this.selected=null;this.followPosition=null;this.ring.visible=false;this.overviewActive=false;this.simulationFit=true;this.localFocusAnchorId=region.anchorId;this.localFollowPosition=center.clone();this.revealedMainTag=region.anchorId;this.lastLabelCandidates=0;this.setHighlight(region.ids);
     this.camera.far=Math.max(this.camera.far,region.distance*5);this.camera.updateProjectionMatrix();this.controls.maxDistance=Math.max(this.controls.maxDistance,region.distance*4);
     this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset:direction.multiplyScalar(region.distance),nodeId:region.anchorId,start:performance.now()};this.lastMainTagRegion=region;return true;
   }
@@ -461,7 +532,7 @@ export class Network {
       if(!accepted)entry.button.hidden=true;
     }
   }
-  select(id,{smooth=false}={}) {
+  select(id,{smooth=true}={}) {
     const node=this.nodes.find(n=>n.id===id);
     if(node?.isMainTag){this.revealedMainTag=this.revealedMainTag===id?null:id;this.lastLabelCandidates=0;this.onMainTag?.(node.mainTag);return;}
     this.revealedMainTag=null;
@@ -471,9 +542,12 @@ export class Network {
     this.localFocusAnchorId=null;this.localFollowPosition=null;
     this.overviewActive=false;
     const target = new THREE.Vector3().fromArray(this.positions[id]);
-    const delta = target.clone().sub(this.controls.target);
-    if(smooth)this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset:this.camera.position.clone().sub(this.controls.target),nodeId:id,start:performance.now()};
-    else{this.focusTransition=null;this.camera.position.add(delta);this.controls.target.copy(target);}
+    const region=nodeFocusRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,nodeId:id,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});
+    const direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
+    const offset=direction.multiplyScalar(region?.distance||Math.max(12,(this.radii[id]||2)*8));
+    this.simulationFit=true;this.camera.far=Math.max(this.camera.far,offset.length()*5);this.camera.updateProjectionMatrix();
+    if(smooth)this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset,nodeId:id,start:performance.now()};
+    else{this.focusTransition=null;this.camera.position.copy(target).add(offset);this.controls.target.copy(target);}
     this.followPosition=target.clone();
     this.ring.position.copy(target);
     this.ring.scale.setScalar((this.radii[id] || 2) + 1.8);
@@ -486,6 +560,7 @@ export class Network {
       types: this.types,
       settings: this.settings,
       hidden: this.hidden,
+      visibleRelationTypes:this.visibleRelationTypes,
       visibleIds: this.visibleIds,
       mainTag:this.mainTag,
       layoutEpoch:this.layoutEpoch,
@@ -513,13 +588,19 @@ export class Network {
       );
     this.controls.update();
   }
+  setAnimationPaused(paused){const value=this.animationClock.setPaused(paused,performance.now());this.host.dataset.animationPaused=String(value);return value;}
   animate() {
     this.frame = requestAnimationFrame(() => this.animate());
-    if (
-      this.layout &&
-      this.layout.advance((performance.now() - this.last) / 1000)
-    )
-      {this.updatePoses();if(!this.simulationFit){this.fit();this.simulationFit=true;}}
+    if(typeof document!=='undefined'&&document.hidden){this.lastSimulationFrame=performance.now();this.last=this.lastSimulationFrame;this.animationClock.resetFrame(this.last);return;}
+    const frameStart=performance.now(),elapsed=(frameStart-(this.lastSimulationFrame??this.last))/1000;
+    this.lastSimulationFrame=frameStart;
+    const motionElapsed=this.animationClock.sample(frameStart);
+    const advanced=!this.animationClock.paused&&this.layout&&this.layout.advance(motionElapsed);
+    this.simulationMs=performance.now()-frameStart;
+    const poseStart=performance.now();
+    const replaying=!this.animationClock.paused&&this.updateReplayPositions?.(this.animationClock.now);
+    if(advanced||replaying){this.updatePoses();if(!this.simulationFit){const display=this.positions;this.positions=this.layout.positions;this.fit();this.positions=display;this.simulationFit=true;}}
+    this.poseMs=performance.now()-poseStart;
     if(this.overviewActive&&performance.now()-(this.lastOverviewFit||0)>250){this.fit({track:true});this.lastOverviewFit=performance.now();}
     this.controls.update();
     if(this.focusTransition){
@@ -532,8 +613,15 @@ export class Network {
     }
     this.updateNavigation();
     if (this.ring.visible) this.ring.quaternion.copy(this.camera.quaternion);
-    this.renderer.render(this.scene, this.camera);
-    this.refreshLabelCandidates(performance.now());
+    if(!this.animationClock.paused)this.updateMotionTrails?.(this.animationClock.now);
+    if(this.glow?.material.uniforms?.viewportHeight)this.glow.material.uniforms.viewportHeight.value=Math.max(1,this.host.clientHeight);
+    const renderStart=performance.now();this.renderer.render(this.scene, this.camera);this.renderMs=performance.now()-renderStart;
+    // Labels are an overlay; their paint cadence need not repeat every WebGL
+    // frame. Selection/hover changes still paint immediately.
+    const labelNow=performance.now(),labelKey=[this.selected,this.hovered,this.revealedMainTag,this.focusEdge,this.hoverEdge].join('|');
+    if(labelNow-(this.lastLabelPaint||0)>=50||labelKey!==this.labelPaintKey){
+    this.lastLabelPaint=labelNow;this.labelPaintKey=labelKey;
+    this.refreshLabelCandidates(labelNow);
     const v = new THREE.Vector3(),
       w = this.host.clientWidth,
       h = this.host.clientHeight;
@@ -590,11 +678,12 @@ export class Network {
     }
     let shownReasons = 0;
     for (const { el, edge } of this.edgeLabels || []) {
+      const priority = edge.id === this.focusEdge || edge.id === this.hoverEdge;
+      const connected = edge.from === this.selected || edge.to === this.selected || edge.from === this.hovered || edge.to === this.hovered;
+      if(!priority&&!connected){el.style.display='none';continue;}
       this.a.fromArray(this.positions[edge.from]);
       this.b.fromArray(this.positions[edge.to]);
       this.direction.copy(this.a).lerp(this.b,0.5).applyMatrix4(this.camera.matrixWorldInverse);
-      const priority = edge.id === this.focusEdge || edge.id === this.hoverEdge;
-      const connected = edge.from === this.selected || edge.to === this.selected || edge.from === this.hovered || edge.to === this.hovered;
       const detail = labelDetail({depth:-this.direction.z, radius:Math.min(this.radii[edge.from],this.radii[edge.to]), height:h, fov:this.camera.fov, priority});
       el.style.fontSize = Math.min(11,detail.fontSize) + 'px';
       el.style.opacity = detail.opacity;
@@ -640,6 +729,7 @@ export class Network {
       el.style.left = x + "px";
       el.style.top = y + "px";
     }
+    }
     const now = performance.now();
     if (
       this.layout &&
@@ -658,6 +748,7 @@ export class Network {
         nodes: this.renderNodes?.length || 0,
         totalNodes: this.nodes?.length || 0,
         layoutSteps: this.layout?.steps || 0,
+        runtimeMetrics:{simulationMs:this.simulationMs,poseMs:this.poseMs,renderMs:this.renderMs,collision:this.layout?.bodyAvoidanceStats,stepCosts:this.layout?.stepCosts},
         edges: this.visibleEdges || 0,
         camera: this.camera.position.toArray(),
         target: this.controls.target.toArray(),
@@ -668,6 +759,7 @@ export class Network {
     }
   }
   dispose() {
+    document.removeEventListener('visibilitychange',this.visibilityClock);
     clearTimeout(this.labelClickTimer);
     cancelAnimationFrame(this.frame);
     this.resize.disconnect();
@@ -680,6 +772,7 @@ export class Network {
     this.renderer.domElement.removeEventListener("pointerleave", this.leave);
     this.disposeMesh(this.mesh);
     this.disposeMesh(this.glow);
+    this.disposeMesh(this.trailMesh);
     for (const m of this.edgeMeshes || []) this.disposeMesh(m);
     this.ring.geometry.dispose();
     this.ring.material.dispose();

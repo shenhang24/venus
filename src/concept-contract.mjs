@@ -9,7 +9,7 @@ export const conceptTemplate=`# 概念名称
 
 ## 认识性质
 区分用户观点、讨论假设、助手建议与已确认结论。讨论中的个例不自动成为普遍真理，也不表示用户已掌握相关技能。
-准入须有可定位的用户本人对答案内容的确认或认同，并形成对应结论；认可不保证客观真理。没有认可或结论的只记作可忽略问题，不进入概念云，不建立待办、不催确认、不自动解题。
+准入须有可定位的用户本人对答案内容的确认或认同，并形成对应结论；认可不保证客观真理。历史补提可将含糊回应或实际话题结束记录为隐含认可，明确反对、纠正、撤回除外；必须保留真实认可方式，不能冒充明确赞同，不构成操作授权。其他输入仍保留原准入规则。未满足对应准入的只记作可忽略问题，不创建待办或自动解题。
 
 ## Reference
 - 原 Vault 位置与讨论段落／字符位置
@@ -30,4 +30,4 @@ stance 必须区分用户观点、讨论假设、助手建议、已确认结论�
 key 是概念稳定名称；existingId 仅引用已提供且 mergeAllowed=true 的同源或跨源同核心、互补概念，整合已提供旧正文的边界而非堆追加日志，不混合含义不同概念。references 由程序保存原始 Vault 路径、字符定位、原讨论参考资料和形成线索；不要捏造讨论日期。quote 最多1200字符，formation 最多400字符，referenceMaterials 仅逐字复制原文中出现的简短参考资料名称，没有则返回空数组。
 最多4个概念。返回符合 schema 的 JSON：\n`;
 const str={type:'string'},obj=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false}),arr=items=>({type:'array',items});
-export const conceptSchema=obj({concepts:arr(obj({key:str,existingId:str,existingHash:str,mergeDecision:{type:'string',enum:['new','same-core','complement']},links:arr(obj({targetId:str,relation:{type:'string',enum:['相关','条件不同','冲突','演进']},reason:str,quote:str})),title:str,summary:str,explanation:str,stance:{type:'string',enum:['用户观点','讨论假设','助手建议','已确认结论']},quote:str,formation:str,admission:obj({questionQuote:str,answerQuote:str,userConfirmationQuote:str,conclusionQuote:str,confirmationTarget:str,confirmationMeaning:{type:'string',enum:['answer-endorsement','execution-permission','receipt-only','unclear']}}),discussion:arr(obj({role:{type:'string',enum:['提问','回答','用户认可','修正','结论']},quote:str})),referenceMaterials:arr(str),mainTags:arr(obj({name:str,reason:str,quote:str}))})),unresolvedQuestions:arr(obj({questionQuote:str,answerQuote:str,conclusionQuote:str,reason:str}))});
+export const conceptSchema=obj({concepts:arr(obj({key:str,existingId:str,existingHash:str,mergeDecision:{type:'string',enum:['new','same-core','complement']},links:arr(obj({targetId:str,relation:{type:'string',enum:['相关','条件不同','冲突','演进']},reason:str,quote:str})),title:str,summary:str,explanation:str,stance:{type:'string',enum:['用户观点','讨论假设','助手建议','已确认结论']},quote:str,formation:str,admission:obj({questionQuote:str,answerQuote:str,userConfirmationQuote:str,conclusionQuote:str,confirmationTarget:str,counterEvidence:arr(str),confirmationMeaning:{type:'string',enum:['answer-endorsement','implicit-acceptance','topic-ended','execution-permission','receipt-only','unclear']}}),discussion:arr(obj({role:{type:'string',enum:['提问','回答','用户认可','修正','结论']},quote:str})),referenceMaterials:arr(str),mainTags:arr(obj({name:str,reason:str,quote:str}))})),unresolvedQuestions:arr(obj({questionQuote:str,answerQuote:str,conclusionQuote:str,reason:str}))});

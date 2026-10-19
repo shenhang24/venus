@@ -1,9 +1,18 @@
-import { tr, initializeLanguage, uiLocale, uiError } from '/i18n.js';
+import { tr, initializeLanguage, uiLocale, uiError, heatText } from '/i18n.js';
+async function renderLayerControls(host,sourceId,helpers){try{const module=await import('/layer-controls.js');return module.renderLayerControls(host,sourceId,{...helpers,api:(route,data)=>helpers.api(route,route==='layers/start'&&pendingLayerProvider?{...data,connection:pendingLayerProvider}:data)});}catch{if(host?.isConnected)host.textContent=tr('四层处理入口将在安全加载新版后台后可用。');}}
+let networkAnimationPaused=false;
+let layerSourceId=null;
+let pendingLayerProvider=null;
 await initializeLanguage();
 import { marked } from "/vendor/marked.js";
-import { Network, shortNodeLabel, createRelationVisibility, relationDisplayTypes } from "/graph.js";
+import { Network, shortNodeLabel, createRelationVisibility, relationDisplayTypes, nodeTagHierarchy } from "/graph.js";
 const relationVisibility=createRelationVisibility(globalThis.localStorage);
-import { knowledgeForSource, knowledgeInScope, knowledgeListPage, chooseKnowledgeSource, knowledgeStatus, taskPresentation, activityState, fileStageProgress, InlineDrafts, saveInlineDraft, linkedNeighbours } from "/knowledge-view.js";
+import { knowledgeForSource, knowledgeInScope, knowledgeListPage, chooseKnowledgeSource, knowledgeStatus, taskPresentation, activityState, fileStageProgress, InlineDrafts, saveInlineDraft, linkedNeighbours, installButtonFeedback, runButtonAction, currentButtonAction, actionResult, SavedProgressObserver, processingState, conceptRecheckMessage, collectProcessingEvidence, tokenUsagePresentation } from "/knowledge-view.js";
+installButtonFeedback(document);
+const savedProgressObserver=new SavedProgressObserver();
+let processingObservation=null,stateReadAt=null,refreshInFlight=null,stateReadError=null;
+let processingEvidence={},processingEvidenceStamp='';
+let tokenUsage=null,tokenUsageNextRead=0;
 let knowledgeSource=null,knowledgeQuery='',knowledgePage=0;
 const inlineDrafts=new InlineDrafts();
 let navigationContext=null;
@@ -42,10 +51,13 @@ const labels = {
   "knowledge-network": tr("AI 知识网络"),
   "skill-network": tr("AI 技能网络"),
   "concept-network":tr('概念网络'),
+  journal:tr('日志 / 更新日志'),
 };
 const contentPurposes={vault:tr('保存任意来源的原始 Markdown，保留原文。'),knowledge:tr('供 AI 检索、衔接上下文与回答；不覆盖当前指示。'),skill:tr('记录已认可方法、适用范围与限制；区分未确认建议，不代替当前授权。'),concept:tr('帮助人理解交流中真正获得的认识；未确认问题单独记录，可忽略。')};
 const mainTagSelections={};
-function mainTagsHTML(node){return (node.mainTags||[]).length?'<div class="main-tags"><strong>'+tr('主分类')+'</strong> '+node.mainTags.map(tag=>'<button class="category-chip" data-main-tag="'+esc(tag.name)+'" data-main-kind="'+node.kind+'" title="'+esc(tag.reason+'\n'+tag.quote)+'">'+esc(tag.name)+'</button>').join('')+'</div>':'';}
+function mainTagsHTML(node){const tags=nodeTagHierarchy(node);return tags.length?'<div class="main-tags"><strong>'+tr('主分类')+'</strong> '+tags.map(tag=>'<button class="category-chip" data-main-tag="'+esc(tag.primary)+'" data-main-kind="'+node.kind+'">'+esc(tr(tag.primary))+'</button>'+tag.secondary.map(sub=>'<button class="category-chip subcategory" data-main-tag="'+esc(tag.primary+'::'+sub)+'" data-main-kind="'+node.kind+'">'+esc(sub)+'</button>').join('')).join('')+'</div>':'';}
+function taxonomyFiltersHTML(kind){const tags=new Map();for(const n of state.nodes.filter(n=>n.kind===kind))for(const t of nodeTagHierarchy(n)){if(!tags.has(t.primary))tags.set(t.primary,new Set());for(const sub of t.secondary)tags.get(t.primary).add(sub);}const selected=mainTagSelections[kind]||'',primary=selected.split('::')[0];return '<h4>'+tr('主分类')+'</h4><div class="main-tags"><button class="category-chip" data-main-tag="">'+tr('全部显示')+'</button>'+[...tags.keys()].sort().map(name=>'<button class="category-chip '+(primary===name?'selected':'')+'" data-main-tag="'+esc(name)+'">'+esc(tr(name))+'</button>').join('')+'</div>'+(primary&&tags.get(primary)?.size?'<h4>'+tr('子分类')+'</h4><div class="main-tags">'+[...tags.get(primary)].sort().map(sub=>'<button class="category-chip '+(selected===primary+'::'+sub?'selected':'')+'" data-main-tag="'+esc(primary+'::'+sub)+'">'+esc(sub)+'</button>').join('')+'</div>':'');}
+function groupProjectEntries(){const list=$('#file-list');if(!list)return;for(const group of state.projectGroups||[]){const buttons=group.members.map(m=>list.querySelector('[data-file="'+m.id+'"]')).filter(Boolean);if(!buttons.length)continue;const details=document.createElement('details');details.className='project-entry';details.open=group.members.some(m=>m.id===chosen||m.id===vaultId);details.innerHTML='<summary>'+esc(group.name)+' <small>'+group.members.length+' '+tr('份原始资料')+'</small></summary><div class="project-branches"></div>';list.insertBefore(details,buttons[0]);for(const button of buttons)details.lastElementChild.append(button);}const input=$('#list-search'),old=input?.oninput;if(input)input.oninput=event=>{old?.(event);for(const group of list.querySelectorAll('.project-entry'))group.hidden=[...group.querySelectorAll('[data-file]')].every(b=>b.hidden);};}
 function bindMainTags(){
   document.querySelectorAll('[data-main-tag]').forEach(button=>button.onclick=()=>{
     const kind=button.dataset.mainKind||view.replace('-network','');
@@ -61,21 +73,53 @@ function toast(t) {
   toast.timer = setTimeout(() => ($("#toast").style.display = "none"), 3300);
 }
 function activityHTML() {
-  const activity = activityState(state.analysis);
-  return '<div class="task-activity ' + activity.mode + '"><span>' + esc(activity.label) + ' · ' + (state.analysis?.completed ?? '—') + '/' + (state.analysis?.total ?? '—') + '</span><div class="task-track"><i></i></div></div>';
+  const task=processingState(state),count=task.count,percent=count&&count[1]>0?Math.max(0,Math.min(100,count[0]/count[1]*100)):null;
+  return '<div class="task-activity '+(stateReadError?'unknown':task.mode)+'"><span>'+esc(stateReadError?tr('状态未知，显示上次结果'):task.label)+(count?' · '+count[0]+'/'+count[1]:'')+'</span>'+(percent===null?'':'<div class="task-track" role="progressbar" aria-label="'+esc(tr('已保存完成数'))+'" aria-valuemin="0" aria-valuemax="'+count[1]+'" aria-valuenow="'+count[0]+'"><i style="width:'+percent+'%;animation:none;transform:none"></i></div>')+'</div>';
+}
+function processingDetailsHTML(){
+ const task=processingState(state),observation=processingObservation,format=value=>new Date(value).toLocaleString(uiLocale(),{timeZone:'Australia/Sydney'});
+ if(stateReadError)return '<div class="processing-details" data-processing-mode="unknown"><strong>'+tr('状态读取失败；保留上次显示，不能确认新的进度')+'</strong><small>'+tr('状态读取：')+(stateReadAt?format(stateReadAt):tr('尚未取得'))+'</small></div>';
+ const content='<div class="processing-details" data-processing-mode="'+task.mode+'"><strong>'+esc(task.label)+'</strong>'+(task.title?'<span>'+tr('当前文件：')+esc(task.title)+'</span>':'')+(task.step?'<span>'+tr('当前步骤：')+esc(stepLabel(task.step))+'</span>':'')+(task.total!==null?'<span>'+tr('已核对落盘：')+task.offset.toLocaleString(uiLocale())+' / '+task.total.toLocaleString(uiLocale())+tr(' 字符')+'</span>':'')+(task.range?'<span>'+tr('当前分段：')+task.range[0]+'–'+task.range[1]+'</span>':task.title?'<span>'+tr('后续起点：')+(task.nextOffset??task.offset)+' · '+tr('本段范围尚未提供')+'</span>':'')+(task.count?'<span>'+tr('已核实完成：')+task.count[0]+' / '+task.count[1]+'</span>':'')+(task.lastAction?'<small>'+tr('最后动作：')+esc(stepLabel(task.lastAction))+'</small>':'')+'<small>'+tr('最后更新：')+(task.lastUpdatedAt?format(task.lastUpdatedAt):tr('未提供'))+'</small><small>'+tr('最后保存：')+(task.lastSavedAt?format(task.lastSavedAt):tr('未提供'))+'</small><small>'+tr('状态读取：')+(stateReadAt?format(stateReadAt):tr('尚未取得'))+'</small><small>'+esc(observation?.lastAdvance?tr('最近落盘推进（本页面观察）：')+format(observation.lastAdvance):tr('本页面尚未观察到新增落盘进度'))+'</small>'+(task.error?'<span role="alert">'+esc(task.error)+'</span>':'')+(task.lastTaskEvent?.action==='RECOVERY_START_BLOCKED'?'<span role="alert">'+tr('最近恢复请求未启动：')+esc(task.lastTaskEvent.error?.original||task.lastTaskEvent.code)+'</span>':'')+(task.exceptions?.length?'<details><summary>'+tr('待回补异常')+' · '+task.exceptions.length+'</summary>'+task.exceptions.map(e=>'<p>'+esc(e.file)+' · '+e.start+'–'+e.end+' · '+esc(tr(e.status==='user-skipped'?'用户跳过，等待决定':e.status==='needs-user'?'需要用户决定':'等待集中回补'))+'</p>').join('')+'</details>':'')+(task.unresolvedSkips?'<small>'+tr('跳过但未完成：')+task.unresolvedSkips+'</small>':'')+'</div>';
+ return content+(task.lastSavedAction?'<small>'+tr('最近保存动作：')+esc(stepLabel(task.lastSavedAction))+'</small>':'')+(task.reason?'<p>'+esc(task.reason)+'</p>':'')+(task.activities.length>1?'<div>'+task.activities.map(flow=>'<p>'+esc(flow.pipeline||flow.label)+' · '+esc(flow.title||'')+' · '+esc(stepLabel(flow.step||flow.lastAction||flow.label))+'</p>').join('')+'</div>':'')+(task.notices.length?'<details><summary>'+tr('其他流程状态')+'</summary>'+task.notices.map(flow=>'<p>'+esc(flow.pipeline||'')+' · '+esc(flow.label)+(flow.title?' · '+esc(flow.title):'')+(flow.range?' · '+flow.range[0]+'–'+flow.range[1]:'')+(flow.reason?' · '+esc(flow.reason):'')+(flow.error?' · '+esc(flow.error):'')+'</p>'+recoveryControlsHTML(flow)).join('')+'</details>':'')+recoveryControlsHTML(task);
+}
+function stepLabel(step){return tr(({CONCEPT_BACKFILL:'历史概念覆盖回补',CLASSIFYING:'主分类归纳中',BACKFILL:'自动恢复正在接续',BLOCKED:'审批或认证阻塞',STOPPED:'执行器已停止，保留断点',CONCEPT_RECHECK_FAST_PASS:'概念再次检查快速通过',CONCEPT_RECHECK_LOCAL_PASS:'概念本地核验通过',CONCEPT_RECHECK_REQUESTED:'概念再次检查已登记',SKIP_EXISTING_CHECKPOINT:'保留原有完整核对记录',SKIP_RANGE_VERIFIED:'复用已核对完整分段','/api/concept-review/recheck':'再次检查概念',LAYER_VALIDATING:'校验引用与原文',LAYER_ERROR:'发生错误',LAYER_SKIPPED:'用户跳过，保留缺口',SERVICE_LOADED:'本地服务已加载',UI_RECOVERY_LOGS_UPDATED:'界面与恢复日志更新','/api/import':'原始资料保存','/api/edit':'资料修改保存','/api/upsert':'提炼节点保存','/api/relation':'关系保存','/api/main-tags':'分类保存','/api/analysis':'队列配置保存','/api/layers/start':'独立层请求','/api/layers/control':'恢复请求','/api/concept-review/control':'恢复请求',READ_COMPARE:'原文与概念对照',MODEL_RUNNING:'模型处理',LAYER_MODEL_STARTED:'模型处理',REUSE_SAVED_RESULT:'复用本地返回结果',VALIDATING:'校验引用与原文',VALIDATION_STARTED:'校验引用与原文',CONCEPT_SAVED:'概念实际保存',SUPPLEMENT_SAVED:'补充实际保存',CONTENT_CHECK_SAVED:'本段内容核对已保存',SKIP_COMPLETE:'核对完整后跳过',RANGE_QUARANTINED:'失败段进入异常清单',CONNECTIONS_NOT_SAVED:'未建立无有效节点的关联',LAYER_SEGMENT_SAVED:'本段结果已保存',LAYER_QUEUED:'独立任务已排队',QUEUED:'排队中',SAVED:'结果已保存',ERROR:'发生错误',FAILED:'失败，等待处理',PAUSED:'已暂停',COMPLETE:'内容核对完成',STARTING:'等待执行器就绪',DOCUMENT_CHECKED:'整篇内容核对完成',RECOVERY_START_BLOCKED:'恢复启动被拦截',REVIEW_SEGMENT_SKIPPED:'用户跳过，保留缺口'})[step]||step);}
+function recoveryControlsHTML(task){const c=task.controls;if(!c||!['failed','paused','blocked'].includes(task.mode))return '';return '<div class="recovery-actions">'+(c.resume?'<button type="button" data-review-action="resume"'+(c.manualRequired?' disabled':'')+'>'+tr('继续核对')+'</button>':'')+(c.retry?'<button type="button" data-review-action="retry"'+(c.manualRequired?' disabled':'')+'>'+tr('重试失败段')+'</button>':'')+(c.skip?'<button type="button" data-review-action="skip">'+tr('跳过此失败段')+'</button>':'')+'<small>'+esc(tr(c.reason))+'</small></div>';}
+function bindRecoveryActions(){document.querySelectorAll('[data-review-action]').forEach(button=>button.onclick=async()=>{const action=button.dataset.reviewAction;if(action==='skip'){modal(tr('跳过此失败段'),'<p>'+tr('保留原文、断点和缺口；跳过不算内容完整。')+'</p><label class="field">'+tr('跳过原因')+'<input name="reason" required maxlength="200"></label>',async form=>{const result=await api('concept-review/control',{action,reason:form.get('reason')});toast(tr(result.skipped?'已记录跳过，仍未完成':'请求已返回，状态已确认'));});return;}const r=await api('concept-review/control',{action});toast(tr(r.manualRequired?r.message:'请求已接受，等待实际状态'));});}
+let journalDay='',journalRows=[],journalNext=null;
+function conceptRecheckDialog(){
+ const sources=state.nodes.filter(n=>n.kind==='vault'&&!n.mergedInto);
+ modal(tr('再次检查概念'),'<p>'+tr('只检查本地源指纹与提取覆盖。已处理且无缺口时跳过；仅缺失、新增或变化范围进入提取，不语义复审。')+'</p><label class="field">'+tr('选择资料')+'<select id="recheck-source">'+sources.map(n=>'<option value="'+esc(n.id)+'"'+(n.id===vaultId?' selected':'')+'>'+esc(n.title)+'</option>').join('')+'</select></label><button type="button" id="recheck-now">'+tr('再次检查概念')+'</button><p id="recheck-result" role="status"></p>',null);
+ $('#recheck-now').onclick=async()=>{const result=await api('concept-review/recheck',{sourceId:$('#recheck-source').value});$('#recheck-result').textContent=conceptRecheckMessage(result);};
+}
+async function renderJournal({older=false}={}){
+ if(!older){$('#main').innerHTML='<section class="journal-page"><h1>'+tr('日志 / 更新日志')+'</h1><p class="subtle">'+tr('仅显示实际记录的事件；未记录的历史不会补造。')+'</p><div class="actions"><input type="date" id="journal-day" aria-label="'+tr('日志日期')+'" value="'+esc(journalDay)+'"><button type="button" id="journal-refresh">'+tr('刷新日志')+'</button></div><div id="journal-events" role="status">'+tr('正在读取日志…')+'</div><button id="journal-older" hidden>'+tr('读取更早记录')+'</button></section>';$('#inspector').innerHTML='<h3>'+tr('任务回报边界')+'</h3><p>'+tr('失败立即写入本地事件与当前任务记录。其他任务须读取记录；没有主动跨任务推送。')+'</p>';$('#journal-refresh').onclick=()=>renderJournal();$('#journal-day').onchange=e=>{journalDay=e.target.value;renderJournal();};}
+ try{const r=await fetch('/api/journal?'+new URLSearchParams({day:journalDay,...(older&&journalNext?{before:journalNext}:{})}));if(!r.ok)throw Error(tr('日志读取失败'));const data=await r.json();if(view!=='journal')return;journalDay=data.day;$('#journal-day').value=journalDay;journalRows=older?[...journalRows,...data.items]:data.items;journalNext=data.next;const rows=[...new Map(journalRows.map(e=>[e.id,e])).values()];$('#journal-events').innerHTML=rows.length?rows.map(e=>'<article class="journal-event" data-event-status="'+esc(e.status)+'"><time>'+esc(new Date(e.time).toLocaleString(uiLocale(),{timeZone:'Australia/Sydney'}))+'</time><strong>'+esc(stepLabel(e.action))+'</strong><span>'+esc(tr(({failed:'失败',queued:'排队中',working:'正在处理',done:'已保存',review:'失败，需核对',paused:'已暂停',ready:'已就绪',saved:'已保存',running:'正在处理',accepted:'已受理',skipped:'已跳过，未完成','not-started':'未启动','verified-skip':'完整，已跳过'})[e.status]||e.status))+'</span>'+(e.file?'<p>'+esc(e.file)+(e.index?' · '+e.index:'')+'</p>':'')+(Number.isFinite(e.start)?'<p>'+tr('当前分段：')+e.start+'–'+e.end+'</p>':'')+(Number.isFinite(e.offset)?'<p>'+tr('已核对落盘：')+e.offset+'</p>':'')+(e.savedCount!==undefined?'<p>'+tr('实际保存节点数：')+e.savedCount+'</p>':'')+(e.error?'<details><summary>'+tr('原始错误与处置')+'</summary><p>'+esc(e.error.original)+'</p><p>'+esc(e.error.disposition)+'</p></details>':'')+(e.reason?'<p>'+tr('原因：')+esc(e.reason)+'</p>':'')+(e.files?'<p>'+e.files.map(esc).join(' · ')+'</p>':'')+'</article>').join(''):'<p>'+tr('这一天没有已记录的历史。')+'</p>';$('#journal-older').hidden=!journalNext;$('#journal-older').onclick=()=>renderJournal({older:true});}catch(error){if($('#journal-events'))$('#journal-events').textContent=error.message;throw error;}
+}
+function paintProcessingStatus(){
+ if($('#job-summary'))$('#job-summary').innerHTML=processingDetailsHTML();
+ if($('#sidebar-activity'))$('#sidebar-activity').innerHTML=activityHTML();
+ if($('#processing-overview'))$('#processing-overview').innerHTML=processingDetailsHTML();
+ if($('#graph-task-summary'))$('#graph-task-summary').textContent=taskSummaryText();
+ if($('#graph-activity'))$('#graph-activity').innerHTML=compactSlotsHTML();
+ if($('#graph-token-usage'))$('#graph-token-usage').innerHTML=tokenUsageHTML();
+ bindRecoveryActions();
+ bindTaskDetails();
 }
 function compactSlotsHTML() {
-  const active=state.analysis?.activeFiles||[];
-  return active.map(file=>{
-    const p=state.analysis.fileProgress?.[file.sourceId],stage=fileStageProgress(state.analysis,file.sourceId);
-    const description=file.title+' · '+stage.label+' · '+(p?.offset||0)+'/'+file.total;
-    return '<button type="button" class="slot-summary" data-task-detail title="'+esc(description)+'"><span class="slot-title">'+file.slot+'. '+esc(file.title)+'</span><span class="slot-stage">'+esc(file.taskKind==='main-tags'?tr('主分类'):stage.label)+'</span><span class="slot-characters">'+(file.taskKind==='main-tags'?file.total+tr(' 项归纳中'):(p?.offset||0).toLocaleString(uiLocale())+' / '+file.total.toLocaleString(uiLocale()))+'</span>'+(file.taskKind==='main-tags'?'':stageProgressHTML(file.sourceId))+'</button>';
-  }).join('') || '<span class="slot-idle">'+esc(activityState(state.analysis).label)+'</span>';
+  const task=processingState(state);
+  const active=task.activities.map(file=>'<button type="button" class="slot-summary" data-task-detail><span class="slot-title">'+esc(file.pipeline)+' · '+esc(file.title||file.label)+'</span><span class="slot-stage">'+esc(stepLabel(file.step||file.lastAction||file.label))+'</span><span class="slot-characters">'+(file.offset||0).toLocaleString(uiLocale())+' / '+(file.total??0).toLocaleString(uiLocale())+'</span></button>').join('')||'<span class="slot-idle">'+esc(task.label)+(task.reason?' · '+esc(task.reason):'')+'</span>';
+  return active+(task.exceptions.length||task.notices.some(f=>['failed','blocked','paused'].includes(f.mode))?'<button type="button" data-task-detail>'+tr('查看原因与进度')+(task.exceptions.length?' · '+task.exceptions.length:'')+'</button>':'')+recoveryControlsHTML(task);
 }
 function bindTaskDetails() { document.querySelectorAll('[data-task-detail]').forEach(button=>button.onclick=jobsDialog); }
 function taskSummaryText() {
-  const a=state.analysis;
-  return activityState(a).label+' · '+(a?.activeFiles?.length||0)+'/'+(a?.maxConcurrent||5)+' · '+(a?.completed??'—')+'/'+(a?.total??'—');
+  if(stateReadError)return tr('状态未知，显示上次结果');
+  const task=processingState(state);return task.label+(task.step?' · '+stepLabel(task.step):'')+(task.count?' · '+task.count[0]+'/'+task.count[1]:'')+(task.title?' · '+task.title:'')+' · '+tokenUsagePresentation(tokenUsage).headline+' · '+(tokenUsagePresentation(tokenUsage).rateHeadline||tr('均速：暂未返回'));
+}
+function tokenUsageHTML(){
+ const p=tokenUsagePresentation(tokenUsage),number=n=>n===null||n===undefined?tr('暂未返回'):n.toLocaleString(uiLocale()),time=t=>new Date(t).toLocaleString(uiLocale(),{timeZone:'Australia/Sydney'});
+ const groups=p.groups.map(g=>'<section><strong>'+esc(g.family)+' / '+esc(g.provider)+' · '+esc(g.model)+'</strong><small>'+tr('输入 / 输出 / 缓存输入子集：')+[g.counts.input,g.counts.output,g.counts.cached].map(number).join(' / ')+'</small><small>'+tr('已返回 / 待回执 / 无用量回执：')+g.returned+' / '+g.pending+' / '+g.unavailable+'</small>'+(g.interrupted?'<small>'+tr('已中断，消耗未知：')+g.interrupted+'</small>':'')+'<small>'+tr('字段回执数（输入/输出/缓存/总量）：')+[g.coverage.input,g.coverage.output,g.coverage.cached,g.coverage.total].join('/')+'</small>'+(g.latest?'<small>'+tr('最近请求平均输出 token/秒：')+(g.latest.averageOutputPerSecond===null?tr('暂未返回'):g.latest.averageOutputPerSecond.toFixed(2))+'</small><small>'+esc(time(g.latest.startedAt))+' → '+esc(time(g.latest.endedAt))+'</small><small>'+tr(g.latest.usage.outputScope==='generated-responses-excludes-thoughts'?'此提供方输出不含单列思考 token。':'输出按提供方口径；思考 token 为输出子集。')+'</small>':'<small>'+tr('token/秒：暂未返回，未估算。')+'</small>')+(g.modelSource==='configured'?'<small>'+tr('模型名来自配置；回执未确认时不声称已解析型号。')+'</small>':'')+'</section>');
+ for(const [id,label]of [['gpt','GPT'],['claude','Claude'],['gemini','Gemini'],['local',tr('本地 AI')]])if(!p.groups.some(g=>g.family===id))groups.push('<small>'+label+' · '+tr('无用量数据；未接入或尚未返回回执。')+'</small>');
+ return '<div class="token-usage"><strong>'+esc(p.headline)+'</strong><small>'+esc(p.note)+'</small>'+(p.enabledAt?'<small>'+tr('采集启用：')+esc(time(p.enabledAt))+'</small>':'')+groups.join('')+'<small>'+tr('结束回执速率为单个请求端到端平均值，包含排队和传输；不相加为并发吞吐，不作实时速率。')+'</small></div>';
 }
 function stageProgressHTML(sourceId) {
   const stage=fileStageProgress(state.analysis,sourceId);
@@ -92,6 +136,8 @@ function activeFilesHTML() {
   }).join('');
 }
 async function api(route, data) {
+  const context=currentButtonAction();
+  try{
   const r = await fetch("/api/" + route, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -99,8 +145,10 @@ async function api(route, data) {
   });
   const j = await r.json();
   if (!r.ok) throw Error(uiError(j.error));
+  actionResult(context,{message:tr(j.accepted?'请求已接受，等待实际状态':j.queued||j.progress?.status==='queued'?'已排队，尚未完成':j.indexed?'索引已建立，可搜索':'请求已返回，状态已确认')});
   await refresh();
   return j;
+  }catch(error){actionResult(context,{error:error.message});throw error;}
 }
 const bodyCache = new Map(), readingPages = new Map();
 let renderGeneration = 0;
@@ -116,10 +164,19 @@ async function loadBody(node) {
   while (bodyCache.size > 3) bodyCache.delete(bodyCache.keys().next().value);
 }
 async function refresh() {
+  if(refreshInFlight)return refreshInFlight;
+  refreshInFlight=refreshState().catch(error=>{stateReadError=error.message;paintProcessingStatus();throw error;}).finally(()=>{refreshInFlight=null;});return refreshInFlight;
+}
+async function refreshState() {
   const r = await fetch("/api/state?summary=1");
   if (!r.ok) throw Error(tr("无法读取本机资料"));
   const next = await r.json();
-  if (next.revision === state.revision) return;
+  const evidenceStamp=[next.revision,next.conceptContentReview?.lastUpdatedAt].join(':');
+  if(evidenceStamp!==processingEvidenceStamp){try{const jr=await fetch('/api/journal?limit=100');if(jr.ok){processingEvidence=collectProcessingEvidence((await jr.json()).items,processingEvidence);processingEvidenceStamp=evidenceStamp;}}catch{}}
+  next.processingEvidence=processingEvidence;
+  if(Date.now()>=tokenUsageNextRead){tokenUsageNextRead=Date.now()+5000;try{const u=await fetch('/api/token-usage');if(u.ok)tokenUsage=await u.json();else{tokenUsage={unavailableReason:u.status===404?'collector-not-loaded':'usage-unavailable'};tokenUsageNextRead=Date.now()+60000;}}catch{tokenUsage={unavailableReason:'usage-unavailable'};}}
+  stateReadError=null;stateReadAt=Date.now();const observedTask=processingState(next);processingObservation=savedProgressObserver.observe(observedTask.key,observedTask.offset,stateReadAt,observedTask.lastSavedAt);
+  if (next.revision === state.revision) {state=next;paintProcessingStatus();return;}
   state = next;
   hidden=relationVisibility.hiddenFor(state.types);
   if (selectedEdge)
@@ -138,11 +195,14 @@ async function refresh() {
     state.jobs.find((j) => j.status === "queued");
   const task = taskPresentation(state);
   $("#job-summary").textContent = [task.status, task.progress, task.problem].filter(Boolean).join('\n');
+  if(state.independentLayers?.active.length){const work=state.independentLayers.active[0],title=state.nodes.find(n=>n.id===work.sourceId)?.title||work.sourceId;$('#job-summary').textContent=tr('独立任务正在处理')+' · '+tr(({knowledge:'AI 知识点',skill:'AI 技能',concept:'概念云'})[work.layer])+'\n'+title+'\n'+work.offset+' / '+work.total;}
+  else if(state.conceptContentReview?.current){const review=state.conceptContentReview;$('#job-summary').textContent=tr(review.workerRunning?'概念内容核对正在处理':review.status==='needs-review'?'概念内容核对需复核':'概念内容核对已暂停')+'\n'+review.current.title+'\n'+review.completed+' / '+review.total+' · '+review.current.offset+' / '+review.current.total;}
   $("#job-summary").title = task.stage;
   if ($('#sidebar-activity')) $('#sidebar-activity').innerHTML = activityHTML();
   else $('#job-summary').insertAdjacentHTML('afterend', '<div id="sidebar-activity">'+activityHTML()+'</div>');
   if ($('#graph-activity')) { $('#graph-activity').innerHTML = compactSlotsHTML(); bindTaskDetails(); }
   if ($('#graph-task-summary')) $('#graph-task-summary').textContent = taskSummaryText();
+  paintProcessingStatus();
   if (graph && !benchmark) {
     updateGraph();
     renderInspector();
@@ -155,7 +215,7 @@ async function refresh() {
   $("#footer-status").textContent =
     "Venus " + (state.version || '') + tr(" · 本机已保存 · 修订 ") +
     state.revision +
-    " · " +
+    tr(" · 状态读取：") +
     new Date().toLocaleTimeString(uiLocale(), { timeZone: "Australia/Sydney" });
 }
 function safeMarkdown(body) {
@@ -245,6 +305,7 @@ async function render({force=false}={}) {
   for (const b of $$("[data-view]"))
     b.classList.toggle("active", b.dataset.view === view);
   if (view.endsWith("-network")) return renderNetwork();
+  if(view==='journal')return renderJournal();
   const nodes = relevant(),
     n = current();
   if (n) {
@@ -262,7 +323,7 @@ async function render({force=false}={}) {
   $("#main").innerHTML =
     '<div class="file-panel"><div class="panel-heading">' +
     panel +
-    '</div><p class="subtle">'+esc(contentPurposes[view]||'')+'</p>'+(view==='concept'?'<button type="button" id="concept-plan" class="wide">'+tr('查看提炼范围与模板')+'</button><button type="button" id="concept-new" class="wide"'+(!state.features?.conceptAdmission?' disabled':'')+'>'+tr('新建概念')+'</button>':'')+'<div class="subtle">' +
+    '</div><p class="subtle">'+esc(contentPurposes[view]||'')+'</p>'+(view==='concept'?'<button type="button" id="concept-plan" class="wide">'+tr('查看提炼范围与模板')+'</button><button type="button" id="concept-new" class="wide"'+(!state.features?.conceptAdmission?' disabled':'')+'>'+tr('新建概念')+'</button><button type="button" id="concept-recheck-open" class="wide">'+tr('再次检查概念')+'</button>':'')+'<div class="subtle">' +
     (view === "knowledge"
       ? tr('已存知识总数：')+knowledgeInScope(state.nodes).length+' · '+tr('当前范围：')+nodes.length
       : nodes.length +
@@ -347,8 +408,14 @@ async function render({force=false}={}) {
       render({force:true});
     };
   if(n)bindInlineEditor(n);
+  if(view==='vault')groupProjectEntries();
+  if(n?.kind==='vault'){
+    const article=document.querySelector('.article .metadata');if(article){article.insertAdjacentHTML('afterend','<div id="source-layer-progress" class="source-layer-progress"></div>');renderLayerControls($('#source-layer-progress'),n.id,{tr,esc,api,toast});}
+  }
+  if(n?.kind==='concept'){const methods=[...new Set((n.conceptReferences||[]).map(r=>r.recognitionMethod||'explicit'))];const metadata=document.querySelector('.article .metadata');if(metadata&&methods.length)metadata.insertAdjacentHTML('afterend','<p class="metric">'+tr('历史认可方式')+' · '+methods.map(method=>esc(tr(({explicit:'明确认可',implicit:'隐含认可','topic-ended':'话题结束'})[method]||method))).join(' / ')+' · '+tr('不构成操作授权')+'</p>');}
   if($('#concept-plan'))$('#concept-plan').onclick=conceptPlanDialog;
   if($('#concept-new'))$('#concept-new').onclick=conceptCreateDialog;
+  if($('#concept-recheck-open'))$('#concept-recheck-open').onclick=conceptRecheckDialog;
   if ($("#queue-button")) $("#queue-button").onclick = () => queue(n);
   document.querySelectorAll('[data-reading-page]').forEach(b => b.onclick = () => {
     readingPages.set(n.id, Number(b.dataset.readingPage)); render({force:true});
@@ -492,7 +559,7 @@ function renderInspector() {
     const kind = view.replace("-network", "");
     $("#inspector").innerHTML =
       tr("<h3>分类与关系</h3>") +
-      '<h4>'+tr('主分类')+'</h4><div class="main-tags"><button class="category-chip" data-main-tag="">'+tr('全部显示')+'</button>'+[...new Set(state.nodes.filter(n=>n.kind===kind).flatMap(n=>(n.mainTags||[]).map(t=>t.name)))].sort().map(name=>'<button class="category-chip '+(mainTagSelections[kind]===name?'selected':'')+'" data-main-tag="'+esc(name)+'">'+esc(name)+'</button>').join('')+'</div>'+
+      taxonomyFiltersHTML(kind)+
       '<p class="metric">'+tr('大标签颜色按归属连接数变化；中心体积最多为普通基准节点的10倍，半径最多约2.154倍。自动自转关闭，局部公转保留。')+'</p>'+
       categoryFilterHTML(kind) +
       tr('<h4>关系类型 · 多选筛选</h4><button class="text-button" id="select-all">全部显示</button>') +
@@ -503,8 +570,8 @@ function renderInspector() {
             esc(t.id) +
             '" ' +
             (!hidden.has(t.id) ? "checked" : "") +
-            '><span>'+(!t.membershipLink?'<input type="color" class="type-color" data-type-color="'+esc(t.id)+'" value="'+esc(t.color)+'" aria-label="'+esc(tr('颜色')+' '+t.name)+'">':'') +
-            esc(t.name) +
+            '><span>'+(!t.membershipLink?'<input type="color" class="type-color" data-type-color="'+esc(t.id)+'" value="'+esc(t.color)+'" aria-label="'+esc(tr('颜色')+' '+tr(t.name))+'">':'') +
+            esc(tr(t.name)) +
             "</span></label>",
         )
         .join("") +
@@ -678,11 +745,12 @@ function jumpToNeighbour(id){
 }
 function heatHTML(n){
   if(!n.heat)return '';
-  return '<div class="support"><h4><i class="swatch" style="background:'+esc(n.heat.color)+'"></i> '+esc(n.heat.name+' · '+n.heat.label)+'</h4><p>'+esc(n.heat.reason)+tr('</p><p class="subtle">重要程度表示持续使用与推进，不表示技能掌握程度。</p></div>');
+  const heat=heatText(n.heat);
+  return '<div class="support"><h4><i class="swatch" style="background:'+esc(n.heat.color)+'"></i> '+esc(heat.name+' · '+heat.label)+'</h4><p>'+esc(heat.reason)+tr('</p><p class="subtle">重要程度表示持续使用与推进，不表示技能掌握程度。</p></div>');
 }
 function edgeHTML(r,editable=true) {
   return (
-    '<div class="support"><h4>'+tr('关系依据')+' · '+esc(state.types.find(t=>t.id===r.type)?.name||r.type)+'</h4><p>' +
+    '<div class="support"><h4>'+tr('关系依据')+' · '+esc(tr(state.types.find(t=>t.id===r.type)?.name||r.type))+'</h4><p>' +
     esc(r.reason) +
     tr("</p><p>强度 ") +
     r.strength +
@@ -706,18 +774,19 @@ function modal(title, body, action, label = tr("保存")) {
   $("#modal-submit").hidden = !action;
   if (!$("#modal").open) $("#modal").showModal();
 }
-$("#modal-form").onsubmit = async (e) => {
+$("#modal-form").onsubmit = (e) => {
   e.preventDefault();
   if (!submitAction) return;
-  $("#modal-submit").disabled = true;
-  try {
+  const button=$('#modal-submit');
+  return runButtonAction(button,async()=>{const currentModalAction=currentButtonAction();button.disabled=true;try {
     await submitAction(new FormData(e.target));
     $("#modal").close();
   } catch (err) {
     $("#form-error").textContent = err.message;
+    actionResult(currentModalAction,{error:err.message});
   } finally {
-    $("#modal-submit").disabled = false;
-  }
+    button.disabled=false;
+  }}).catch(()=>{});
 };
 $("#modal-close").onclick = () => $("#modal").close();
 function importDialog() {
@@ -768,7 +837,7 @@ function jobsDialog() {
   const counts=state.jobs.reduce((c,j)=>(c[j.status]=(c[j.status]||0)+1,c),{});
   modal(
     tr("自动处理进度"),
-    activityHTML()+'<div role="status" aria-live="polite"><strong>'+esc(task.status)+'</strong><p>'+esc(task.current)+'</p><p>'+esc(task.progress)+'</p><p>'+esc(task.stage)+'</p>'+(task.problem?'<p>'+esc(task.problem)+'</p>':'')+'</div>'+activeFilesHTML()+
+    '<section id="processing-overview" role="status" aria-live="polite">'+processingDetailsHTML()+'</section>'+activityHTML()+'<div><strong>'+tr('联合提取队列')+' · '+esc(task.status)+'</strong><p>'+esc(task.current)+'</p><p>'+esc(task.progress)+'</p><p>'+esc(task.stage)+'</p>'+(task.problem?'<p>'+esc(task.problem)+'</p>':'')+'</div>'+activeFilesHTML()+
       tr('<p class="subtle">流程：导入原文 → 分段联合分析（知识提取 / 关系比较 / 主分类归纳 / 技能整合）→ 校验依据并落盘 → 下一段或下一篇。存量主分类随现有调用分批回填。最多五份文件并行，每份内部按段续接，无需逐篇启动。</p>')+
       '<div class="analysis-overview"><strong>'+(a.completed||0)+' / '+(a.total||0)+tr(' 篇已完成</strong><span>已读 ')+(a.segments||0)+tr(' 段 · 后续按顺序 ')+(counts.queued||0)+tr(' · 手动暂停 ')+(counts.paused||0)+tr(' · 重试 ')+(a.retrying||0)+tr(' · 实际失败 ')+(a.needsReview||0)+tr(' · 有核对说明 ')+(a.withNotes||0)+'</span></div>'+
       (a.mainTagProgress?'<p class="metric">'+tr('主分类覆盖 ')+a.mainTagProgress.covered+'/'+a.mainTagProgress.total+' · '+tr('待归纳 ')+(a.mainTagProgress.total-a.mainTagProgress.reviewed)+' · '+tr('依据不足 ')+a.mainTagProgress.unresolved+'</p>':'')+
@@ -802,6 +871,9 @@ function jobsDialog() {
   $('#analysis-toggle').onclick=async()=>{try{await api('analysis',{enabled:!a.enabled});toast(a.enabled?tr('已暂停自动处理；已保存进度保留'):tr('自动处理已启动，将从已保存进度连续接续'));jobsDialog();}catch(e){toast(e.message);}};
   $('#analysis-retry').onclick=async()=>{try{await api('analysis',{retryFailed:true});jobsDialog();}catch(e){toast(e.message);}};
   $('#provider-open').onclick=providerDialog;
+  const sources=state.nodes.filter(n=>n.kind==='vault'&&!n.mergedInto);if(!sources.some(n=>n.id===layerSourceId))layerSourceId=vaultId||sources[0]?.id;
+  $('#modal-body').insertAdjacentHTML('afterbegin','<section class="source-layer-progress"><h3>'+tr('按资料单独处理')+'</h3><select id="layer-source-choice" aria-label="'+tr('选择资料')+'">'+sources.map(n=>'<option value="'+esc(n.id)+'"'+(n.id===layerSourceId?' selected':'')+'>'+esc(n.title)+'</option>').join('')+'</select><div id="job-layer-controls"></div></section>');
+  const paintLayers=()=>{if(layerSourceId)renderLayerControls($('#job-layer-controls'),layerSourceId,{tr,esc,api,toast});};paintLayers();$('#layer-source-choice').onchange=e=>{layerSourceId=e.target.value;paintLayers();};bindRecoveryActions();
   $('#mcp-open').onclick=mcpDialog;
   $$("[data-job-source]").forEach(
     (b) =>
@@ -819,7 +891,7 @@ function jobsDialog() {
   );
 }
 async function mcpDialog(){
-  const control='/api/mcp-control',tunnelId='YOUR_TUNNEL_ID';let token='';
+  const control='/api/mcp-control',tunnelId='tunnel_6ad337c0ac7081918aa89f6eba324024';let token='';
   modal(tr('MCP 连接'),'<label class="field">Tunnel ID<input id="tunnel-id" value="'+tunnelId+'" readonly></label><label class="field">'+tr('运行 API 密钥（仅本机，不保存）')+'<input id="tunnel-key" type="password" autocomplete="off" spellcheck="false" maxlength="4096"></label><p class="metric">'+tr('仅六个只读工具。密钥不进入网址、日志或浏览器存储。ChatGPT 添加 MCP 时认证选择 None。')+'</p><button type="button" id="tunnel-start">'+tr('启动 Tunnel')+'</button> <button type="button" id="tunnel-stop">'+tr('停止 Tunnel')+'</button> <button type="button" id="tunnel-refresh">'+tr('刷新连接状态')+'</button><p id="tunnel-status" role="status"></p><p class="metric">'+tr('ChatGPT 注册与实际工具调用：尚未验证；不等同于 Tunnel READY。')+'</p><p><a target="_blank" rel="noopener noreferrer" href="https://platform.openai.com/settings/organization/api-keys">'+tr('创建运行密钥：仅 Tunnels Read + Use')+'</a></p><p><a target="_blank" rel="noopener noreferrer" href="https://platform.openai.com/settings/organization/tunnels">'+tr('官方 Tunnel 设置')+'</a> · <a target="_blank" rel="noopener noreferrer" href="http://127.0.0.1:10003/">'+tr('本机独立连接页')+'</a></p>',null);
   const refresh=async()=>{try{const response=await fetch(control+'/status',{signal:AbortSignal.timeout(5000)});if(!response.ok)throw Error();const s=await response.json();token=s.token;const el=$('#tunnel-status');if(el)el.textContent='stdio MCP: '+(s.localMcpReady?'6 read-only tools READY':'not ready')+' · Tunnel: '+(s.ready?'READY':s.processRunning?tr('启动中'):tr('未启动'))+(s.error&&!s.ready?' · '+s.error:'');if($('#tunnel-stop'))$('#tunnel-stop').disabled=!s.processRunning;return s;}catch{if($('#tunnel-status'))$('#tunnel-status').textContent=tr('本机连接控制器未运行。请打开“连接Venus私人隧道.cmd”，再刷新状态。');return null;}};
   $('#tunnel-start').onclick=async()=>{const input=$('#tunnel-key');let key=input.value.trim();if(!key){toast(tr('请先输入运行 API 密钥'));return;}input.value='';try{if(!token&&!await refresh())return;const response=await fetch(control+'/start',{method:'POST',headers:{'Content-Type':'application/json','X-Venus-Token':token},body:JSON.stringify({key,tunnelId}),signal:AbortSignal.timeout(8000)});key='';const s=await response.json();if(!response.ok){$('#tunnel-status').textContent=s.error||tr('连接失败');return;}await refresh();}catch{if($('#tunnel-status'))$('#tunnel-status').textContent=tr('连接失败');}finally{key='';}};
@@ -829,7 +901,7 @@ async function mcpDialog(){
 async function providerDialog(){
   let info;try{const response=await fetch('/api/analysis-provider');if(!response.ok)throw Error('当前后台尚未加载模型接入接口；现有分析未改动。接口会在下一次正常启动后可用。');info=await response.json();}catch(error){toast(error.message);return;}
   const c=info.saved;
-  modal(tr('模型与本地 AI 接入'),'<p class="subtle">'+esc(tr('仅保存下次后台启动使用的配置，不切换或终止当前分析。本地模式只连接回环地址，不会自动发送到云端。'))+'</p><p>'+esc(tr('当前：')+info.active.provider+' · '+(info.active.model||tr('模型未显式指定'))+' · '+(info.active.reasoningEffort||tr('推理强度未显式指定')))+'</p><label class="field">'+tr('接入方式')+'<select name="provider" id="provider-kind">'+[['codex','Codex CLI'],['http','HTTP / OpenAI 兼容'],['gemini','Gemini Interactions'],['local','本地 AI / OpenAI 兼容']].map(([id,label])=>'<option value="'+id+'"'+(c.provider===id?' selected':'')+'>'+esc(label)+'</option>').join('')+'</select></label>'+[['model','模型名',c.model],['endpoint','服务基础地址（本地只允许 localhost / 127.0.0.1 / ::1）',c.endpoint],['keyEnv','密钥环境变量名（不填写密钥本身）',c.keyEnv],['reasoningEffort','推理强度（留空使用模型默认）',c.reasoningEffort]].map(([name,label,value])=>'<label class="field">'+esc(tr(label))+'<input name="'+name+'" value="'+esc(value)+'" autocomplete="off"></label>').join('')+'<div class="two-col">'+[['chunkCharacters','每段原文字符',c.chunkCharacters,1000,40000],['maxInputCharacters','总输入字符预算',c.maxInputCharacters,8000,2000000],['maxOutputTokens','输出 token 上限',c.maxOutputTokens,512,64000],['candidateLimit','每轮关联候选上限',c.candidateLimit,0,44],['candidateExcerptCharacters','候选摘录字符上限',c.candidateExcerptCharacters,200,8000],['mainTagCandidateLimit','每轮分类补全候选上限',c.mainTagCandidateLimit,0,20]].map(([name,label,value,min,max])=>'<label class="field">'+esc(tr(label))+'<input type="number" name="'+name+'" min="'+min+'" max="'+max+'" value="'+value+'" required></label>').join('')+'</div><label class="field">'+tr('结构化输出')+'<select name="format"><option value="schema"'+(c.format==='schema'?' selected':'')+'>JSON Schema</option><option value="json"'+(c.format==='json'?' selected':'')+'>JSON（兼容模式）</option></select></label><p class="metric">'+esc(c.status)+tr('。这里不会测试连接或调用模型。原文会分段完整处理，不会静默截断。')+'</p>',async form=>{await api('analysis-provider',Object.fromEntries(form));toast(tr('配置已保存，仅下次后台启动生效；当前分析保持原接入'));});
+  modal(tr('模型与本地 AI 接入'),'<p class="subtle">'+esc(tr('仅保存下次后台启动使用的配置，不切换或终止当前分析。本地模式只连接回环地址，不会自动发送到云端。'))+'</p><p>'+esc(tr('当前：')+info.active.provider+' · '+(info.active.model||tr('模型未显式指定'))+' · '+(info.active.reasoningEffort||tr('推理强度未显式指定')))+'</p><label class="field">'+tr('接入方式')+'<select name="provider" id="provider-kind">'+[['codex','Codex CLI'],['http','HTTP / OpenAI 兼容'],['gemini','Gemini Interactions'],['local','本地 AI / OpenAI 兼容']].map(([id,label])=>'<option value="'+id+'"'+(c.provider===id?' selected':'')+'>'+esc(tr(label))+'</option>').join('')+'</select></label>'+[['model','模型名',c.model],['endpoint','服务基础地址（本地只允许 localhost / 127.0.0.1 / ::1）',c.endpoint],['keyEnv','密钥环境变量名（不填写密钥本身）',c.keyEnv],['reasoningEffort','推理强度（留空使用模型默认）',c.reasoningEffort]].map(([name,label,value])=>'<label class="field">'+esc(tr(label))+'<input name="'+name+'" value="'+esc(value)+'" autocomplete="off"></label>').join('')+'<div class="two-col">'+[['chunkCharacters','每段原文字符',c.chunkCharacters,1000,40000],['maxInputCharacters','总输入字符预算',c.maxInputCharacters,8000,2000000],['maxOutputTokens','输出 token 上限',c.maxOutputTokens,512,64000],['candidateLimit','每轮关联候选上限',c.candidateLimit,0,44],['candidateExcerptCharacters','候选摘录字符上限',c.candidateExcerptCharacters,200,8000],['mainTagCandidateLimit','每轮分类补全候选上限',c.mainTagCandidateLimit,0,20]].map(([name,label,value,min,max])=>'<label class="field">'+esc(tr(label))+'<input type="number" name="'+name+'" min="'+min+'" max="'+max+'" value="'+value+'" required></label>').join('')+'</div><label class="field">'+tr('结构化输出')+'<select name="format"><option value="schema"'+(c.format==='schema'?' selected':'')+'>JSON Schema</option><option value="json"'+(c.format==='json'?' selected':'')+'>JSON（兼容模式）</option></select></label><p class="metric">'+esc(tr(c.status))+tr('。这里不会测试连接或调用模型。原文会分段完整处理，不会静默截断。')+'</p>',async form=>{await api('analysis-provider',Object.fromEntries(form));toast(tr('配置已保存，仅下次后台启动生效；当前分析保持原接入'));});
   $('#provider-kind').onchange=e=>{if(e.target.value==='local'){const form=e.target.form;for(const [key,value]of Object.entries({chunkCharacters:6000,maxInputCharacters:48000,maxOutputTokens:4096,candidateLimit:6,candidateExcerptCharacters:1000,mainTagCandidateLimit:2}))form.elements[key].value=value;form.elements.endpoint.value='';form.elements.keyEnv.value='';}};
 }
 async function historyDialog(n) {
@@ -963,7 +1035,7 @@ function relationDialog(r, n) {
             '" ' +
             (r?.type === t.id ? "selected" : "") +
             ">" +
-            esc(t.name) +
+            esc(tr(t.name)) +
             "</option>",
         )
         .join("") +
@@ -1119,7 +1191,7 @@ function bindCategoryFilters() {
 }
 function focusFilteredContent({relationType,category,mainTag}={}){
   if(!graph)return;const kind=view.replace('-network',''),nodes=state.nodes.filter(n=>n.kind===kind&&!n.mergedInto),ids=new Set();
-  if(mainTag){if(!graph.focusMainTag?.(mainTag))toast(tr('当前筛选没有匹配节点或关系'));return;}
+  if(mainTag){if(!graph.focusMainTag?.(mainTag.split('::')[0]))toast(tr('当前筛选没有匹配节点或关系'));return;}
   if(relationType){const visible=new Set(graph.renderNodes.map(n=>n.id));for(const r of state.relations)if(r.type===relationType&&!hidden.has(r.type)&&visible.has(r.from)&&visible.has(r.to)){ids.add(r.from);ids.add(r.to);}}
   else for(const n of nodes)if((!category||(n.categories||[]).includes(category))&&(!mainTag||(n.mainTags||[]).some(t=>t.name===mainTag)))ids.add(n.id);
   if(!ids.size||!graph.focusNodes?.([...ids]))toast(tr('当前筛选没有匹配节点或关系'));
@@ -1261,7 +1333,7 @@ function renderNetwork() {
     [['#eeeeee',tr('白'),tr('单次使用')],['#63cf8b',tr('绿'),tr('2 轮跟进')],['#61a7f5',tr('蓝'),tr('4 轮推进或 3 份对话复用')],['#b18af2',tr('紫'),tr('跨 2 天且 3 轮')],['#f5a451',tr('橙'),tr('跨 3 天且 8 轮')],['#f3ce60',tr('金'),tr('跨 5 天且 16 轮，或指定重点项目')]].map(([color,name,reason])=>'<span title="'+reason+'"><i style="background:'+color+'"></i>'+name+'</span>').join('')+
     tr('</div></div><div class="actions"><select id="node-locate" aria-label="定位任意节点"></select><button id="fit-graph">查看全图</button></div></div><div id="graph-area" class="graph-area" aria-label="可环绕缩放的三维网络"><div class="graph-stats" id="graph-stats"></div><div class="graph-camera" id="graph-camera"></div><div class="graph-empty"><h2>让关系逐步浮现</h2><p>资料与依据保存后，节点会自动出现。</p></div><div class="graph-hint">颜色：使用与持续推进热度　拖动：环绕　滚轮：缩放　点击：观察中心　双击：进入内容　文字随距离缩小、隐藏</div></div></div>');
   try {
-    $('#graph-area').insertAdjacentHTML('beforeend', '<details class="graph-task-float"><summary id="graph-task-summary">'+esc(taskSummaryText())+'</summary><div id="graph-activity" aria-label="'+esc(tr('活动文件'))+'">'+compactSlotsHTML()+'</div></details>');
+    $('#graph-area').insertAdjacentHTML('beforeend', '<details class="graph-task-float"><summary id="graph-task-summary">'+esc(taskSummaryText())+'</summary><div id="graph-activity" aria-label="'+esc(tr('活动文件'))+'">'+compactSlotsHTML()+'</div><div id="graph-token-usage">'+tokenUsageHTML()+'</div></details>');
     bindTaskDetails();
     graph = new Network($("#graph-area"), {
       layoutKey: view,
@@ -1295,6 +1367,7 @@ function renderNetwork() {
       },
       onStats: (s) => {
         $("#graph-area").dataset.layoutSteps = String(s.layoutSteps);
+        if(benchmark)$("#graph-area").dataset.runtimeMetrics=JSON.stringify(s.runtimeMetrics);
         $("#graph-area").dataset.layoutSample = JSON.stringify(
           graph?.renderNodes
             ?.slice(0, 3)
@@ -1316,6 +1389,9 @@ function renderNetwork() {
       },
     });
     updateGraph();
+    graph.setAnimationPaused(networkAnimationPaused);
+    const fit=$('#fit-graph');fit.insertAdjacentHTML('beforebegin','<button type="button" id="pause-network" aria-pressed="'+networkAnimationPaused+'">'+esc(tr(networkAnimationPaused?'继续动画':'暂停动画'))+'</button>');
+    $('#pause-network').onclick=()=>{networkAnimationPaused=graph.setAnimationPaused(!networkAnimationPaused);$('#pause-network').setAttribute('aria-pressed',String(networkAnimationPaused));$('#pause-network').textContent=tr(networkAnimationPaused?'继续动画':'暂停动画');};
     $("#fit-graph").onclick = () => graph.fit();
     $("#node-locate").onchange = (e) => {
       if (e.target.value) graph.select(e.target.value);
@@ -1332,21 +1408,22 @@ function renderNetwork() {
 function benchmarkDialog() {
   modal(
     tr("临时性能试验"),
-    tr('<p class="subtle">仅在当前视图绘制合成节点与关系，不写入资料目录。结果只代表当前机器与当前布局。</p><label class="field">规模<select name="count"><option>100</option><option>1000</option><option>10000</option></select></label>'),
+    tr('<p class="subtle">仅在当前视图绘制合成节点与关系，不写入资料目录。结果只代表当前机器与当前布局。</p><label class="field">规模<select name="count"><option>100</option><option>1000</option><option>2306</option><option>9608</option><option>10000</option></select></label><label class="field">试验布局<select name="topology"><option value="orbital">24 域公转与共享节点</option><option value="legacy">原有连链试验</option></select></label>'),
     (f) => {
       const count = Number(f.get("count")),
         nodes = [],
         edges = [],
         positions = {};
+      const orbital=f.get('topology')==='orbital',kind=view.replace('-network','');
       for (let i = 0; i < count; i++) {
         const id = "bench-" + i;
-        nodes.push({ id, title: tr("试验节点 ") + i });
+        nodes.push({ id, title: tr("试验节点 ") + i,...(orbital?{kind,mainTags:[{name:'Sample '+String(i%24).padStart(2,'0'),reason:'Synthetic orbital benchmark',quote:'Sample'},...(i<24?[{name:'Sample '+String((i+1)%24).padStart(2,'0'),reason:'Synthetic shared node',quote:'Sample'}]:[])]}:{}) });
         positions[id] = [
           Math.sin(i * 2.39) * Math.sqrt(i) * 3,
           Math.cos(i * 0.71) * Math.sqrt(i) * 3,
           Math.sin(i * 0.93) * Math.sqrt(i) * 3,
         ];
-        if (i)
+        if (i&&!orbital)
           edges.push({
             id: "be-" + i,
             from: id,
@@ -1401,15 +1478,16 @@ async function controlVenus(action) {
     events.close();
     graph?.dispose(); graph = null;
     if (action === 'shutdown') {
-      $('#connection').textContent = tr('Venus 已关闭');
-      $('#main').innerHTML = tr('<div class="empty"><h2>Venus 已关闭</h2><p>后台已停止。重新使用时，请运行 Start-Venus.cmd。</p></div>');
+      $('#connection').textContent = tr('关闭请求已接受，等待后台退出');
+      $('#main').innerHTML = '<div class="empty"><h2>'+tr('关闭请求已接受，等待后台退出')+'</h2></div>';
       $('#inspector').replaceChildren();
       // The launcher reuses this window. Reconnect when the user starts Venus again.
+      let shutdownObserved=false;
       const reconnect = setInterval(async () => {
         try {
           const response=await fetch('/api/state?summary=1',{cache:'no-store',signal:AbortSignal.timeout(1500)});
-          if(response.ok){clearInterval(reconnect);location.reload();}
-        } catch {}
+          if(response.ok&&shutdownObserved){clearInterval(reconnect);location.reload();}
+        } catch {shutdownObserved=true;$('#connection').textContent=tr('后台连接已断开');$('#main').innerHTML='<div class="empty"><h2>'+tr('后台连接已断开')+'</h2><p>'+tr('重新使用时，请运行 Start-Venus.cmd。')+'</p></div>';}
       },3000);
       return;
     }
@@ -1435,6 +1513,8 @@ $('#venus-shutdown').onclick = () => controlVenus('shutdown');
 events.onmessage = () => refresh().catch((e) => toast(e.message));
 events.onopen = () => ($("#connection").textContent = tr("本机已连接"));
 events.onerror = () => ($("#connection").textContent = tr("正在重新连接"));
+// Refresh visible task state even when only the external review ledger changed.
+setInterval(()=>{if(!document.hidden&&!lifecycleBusy)refresh().catch(()=>{});},5000);
 refresh().catch((e) => {
   $("#connection").textContent = tr("连接失败");
   toast(e.message);
@@ -1480,3 +1560,19 @@ $("#ribbon-jobs").onclick = jobsDialog;
 
 
 $('#mcp-connect-open').onclick=mcpDialog;
+async function aiConnectionDialog(family){
+  const name=({claude:'Claude',gemini:'Gemini',gpt:'GPT',local:tr('本地 AI')})[family];
+  modal(name+' · '+tr('连接'),'<p>'+tr('点击开始后，仅检查本机兼容客户端、已有配置和指定本地服务，不调用模型、不切换当前分析。')+'</p><p class="metric">'+tr('网页登录不等于本机模型 API。MCP 用于只读知识检索，不能代替模型推理连接。')+'</p><button type="button" id="ai-detect-start">'+tr('开始检测')+'</button><div id="ai-connection-result" role="status"></div>',null);
+  $('#ai-detect-start').onclick=async event=>{const context=currentButtonAction();event.target.disabled=true;const host=$('#ai-connection-result');host.textContent=tr('正在检查本机连接…');try{
+    const response=await fetch('/api/ai-connections/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({family})});const result=await response.json();if(!response.ok)throw Error(result.error||tr('当前后台尚未加载 AI 连接入口'));
+    host.innerHTML='<p><strong>'+esc(tr(result.status))+'</strong></p>'+(result.connection?'<p>'+esc(result.connection.provider+' · '+result.connection.model)+'</p>':'')+(result.services?.length?'<ul>'+result.services.map(s=>'<li>'+esc(s.endpoint)+' · '+esc(s.models.join('、')||tr('尚未加载模型'))+'</li>').join('')+'</ul>':'')+'<ol>'+result.steps.map(step=>'<li>'+esc(tr(step))+'</li>').join('')+'</ol><p class="metric">'+tr('当前分析继续使用原接入。新增登录、凭证和授权由你完成，不会自动启用公网连接。')+'</p><button type="button" id="ai-model-config">'+tr('模型接入配置')+'</button> <button type="button" id="ai-mcp-config">'+tr('MCP 只读知识连接')+'</button>';
+    if(result.ready){host.insertAdjacentHTML('beforeend','<p><button type="button" id="ai-use-new-tasks">'+tr('仅用于接下来新建的独立任务')+'</button></p>');$('#ai-use-new-tasks').onclick=()=>{pendingLayerProvider=family;toast(name+' · '+tr('已用于新任务；当前处理保持原接入'));$('#modal').close();};}
+    actionResult(context,{message:tr(result.status)});$('#ai-model-config').onclick=()=>aiConnectionConfigDialog(family);$('#ai-mcp-config').onclick=mcpDialog;
+  }catch(error){actionResult(context,{error:error.message});host.textContent=error.message;}finally{if(event.target.isConnected)event.target.disabled=false;}};
+}
+document.querySelectorAll('[data-ai-entry]').forEach(button=>button.onclick=()=>aiConnectionDialog(button.dataset.aiEntry));
+async function aiConnectionConfigDialog(family){
+  try{const response=await fetch('/api/ai-connections');if(!response.ok)throw Error(tr('当前后台尚未加载 AI 连接入口'));const info=await response.json(),c=info.saved?.[family]||{},providers=({claude:[['http','HTTP / OpenAI 兼容']],gemini:[['gemini','Gemini Interactions'],['http','HTTP / OpenAI 兼容']],gpt:[['codex','Codex CLI'],['http','HTTP / OpenAI 兼容']],local:[['local','本地 AI / OpenAI 兼容']]})[family];
+    modal(tr('独立连接配置'),'<p>'+tr('此配置仅属于当前入口，不改变正在处理资料的模型。由你完成新增登录或密钥授权；这里只填写环境变量名。')+'</p><label class="field">'+tr('接入方式')+'<select name="provider">'+providers.map(([id,label])=>'<option value="'+id+'"'+(c.provider===id?' selected':'')+'>'+esc(tr(label))+'</option>').join('')+'</select></label>'+[['model','模型名',c.model],['endpoint','服务基础地址',c.endpoint],['keyEnv','密钥环境变量名（不填写密钥本身）',c.keyEnv]].map(([key,label,value])=>'<label class="field">'+esc(tr(label))+'<input name="'+key+'" value="'+esc(value||'')+'" autocomplete="off"></label>').join(''),async form=>{await api('ai-connections/configure',{family,...Object.fromEntries(form),reasoningEffort:'low'});toast(tr('独立连接已保存；当前处理保持原接入'));});
+  }catch(error){toast(error.message);}
+}

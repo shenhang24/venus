@@ -1,5 +1,17 @@
 # Changes
 
+## 0.5.0 — 2026-10-19
+
+- Independent source-layer processing, provider entry controls, and pause/resume for all four network animations.
+- Truthful runtime activity across normal extraction, historical gaps and independent layers; deferred failures retain unresolved gaps. Inline retry, skip and continue controls retain traceability.
+- Temporary-to-persistent identifier mapping, structured execution journals, and bounded recovery of failed work.
+- Real provider/model token receipts with deduplication and cache semantics; the latest request's average output rate includes waiting and transport and is not live streaming throughput.
+- Current-material input boundaries: user-edited content remains authoritative input, references provide traceability, and source instructions never grant execution permission.
+- Consistent field, editor, dialog and floating-panel padding, line spacing, wrapping and scrolling. Long dialog bodies stay within the viewport while actions remain visible; late English captions now translate correctly.
+- English architecture diagram, detailed update notes and a synthetic long-text spacing screenshot.
+
+[Release notes](RELEASE-NOTES.md) · [Architecture](docs/ARCHITECTURE.md)
+
 ## 0.4.1 — 2026-10-18
 
 - Cross-system shared groups pass through other bodies during exterior transfer, without obstacle detours or body-level collision correction. The exemption ends after docking; ordinary resident clearance remains in place.

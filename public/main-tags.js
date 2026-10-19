@@ -1,6 +1,7 @@
 import {nodeRadiusFactor} from './layout.js';
-export function mainTagNames(node){return [...new Set((node.mainTags||[]).map(tag=>tag.name))];}
-export function matchesMainTag(node,name){return !name||node.isMainTag&&node.mainTag===name||mainTagNames(node).includes(name);}
+import {nodeTagHierarchy,tagHierarchy} from './taxonomy.js';
+export function mainTagNames(node){return nodeTagHierarchy(node).map(tag=>tag.primary);}
+export function matchesMainTag(node,name){if(!name)return true;const [primary,secondary]=name.split('::');return node.isMainTag?node.mainTag===primary:nodeTagHierarchy(node).some(tag=>tag.primary===primary&&(!secondary||tag.secondary.includes(secondary)));}
 export function effectiveDegrees(edges){
   const seen=new Set(),degrees={};
   for(const edge of edges){
@@ -21,10 +22,10 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
     const angle=(value>>>0)/4294967296*Math.PI*2,id='@main:'+nodes[0]?.kind+':'+name;
     const members=nodes.filter(node=>mainTagNames(node).includes(name));
     const connectionCount=new Set(members.map(node=>node.id)).size;
-    cores.push({id,title:name,isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
+    cores.push({id,title:tr(name),isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
     if(centered)seeds[id]=[0,0,0];else seeds[id]||=[Math.cos(angle)*spacing*7,Math.sin(angle*2.3)*spacing*3,Math.sin(angle)*spacing*7];
     for(const node of members){
-      const evidence=node.mainTags.find(tag=>tag.name===name);
+      const evidence=(node.mainTags||[]).find(tag=>tagHierarchy(tag.name)?.primary===name)||{reason:tr('同一项目范围（按分支标题归组）'),quote:''};
       anchors.push({id:'@anchor:'+id+':'+node.id,from:id,to:node.id,type:'@semantic',strength:1,semanticAnchor:true,membershipLink:true,mainTag:name,summary:evidence.reason,reason:evidence.reason,sources:[{id:node.id,quote:evidence.quote}]});
     }
   }

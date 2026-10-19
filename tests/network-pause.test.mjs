@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {NetworkAnimationClock} from '../public/animation-clock.js';import {AffinityLayout} from '../public/layout.js';
+test('pause freezes orbital and transfer time; resume ignores the paused wall interval',()=>{
+ const clock=new NetworkAnimationClock(0),layout=new AffinityLayout();layout.sync({nodes:[{id:'a',isMainTag:true,mainTag:'a',connections:2},{id:'b',mainTags:['a']}],edges:[]});
+ const tick=now=>{const dt=clock.sample(now);if(!clock.paused)layout.advance(dt);};tick(200);const before=structuredClone(layout.positions),phase=layout.time,logical=clock.now;clock.setPaused(true,200);tick(120000);assert.deepEqual(Object.entries(layout.positions),Object.entries(before));assert.equal(layout.time,phase);assert.equal(clock.now,logical);clock.setPaused(false,120000);tick(120200);assert.equal(clock.now,400);assert.ok(layout.time>phase);assert.ok(layout.time-phase<phase+1);
+});
+test('visibility reset and repeated pause preserve logical animation phase',()=>{const c=new NetworkAnimationClock(100);assert.equal(c.sample(200),.1);c.setPaused(true,200);c.sample(10000);c.resetFrame(20000);c.setPaused(false,20000);assert.equal(c.sample(20100),.1);assert.equal(c.now,300);});

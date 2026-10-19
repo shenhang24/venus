@@ -28,6 +28,7 @@ export async function initializeLanguage() {
 // Translate developer-owned literals before inserting private values into them.
 // Titles, file names, quotations, Markdown and analysis bodies never pass here.
 const translations = {
+  '试验布局':'Test layout','24 域公转与共享节点':'24-domain orbits and shared nodes','原有连链试验':'Legacy chain test',
   '保存任意来源的原始 Markdown，保留原文。':'Preserve original Markdown from any source.',
   '供 AI 检索、衔接上下文与回答；不覆盖当前指示。':'For AI retrieval, context and answers; never overrides current instructions.',
   '记录已认可方法、适用范围与限制；区分未确认建议，不代替当前授权。':'Record endorsed methods, scope and limits. Unconfirmed suggestions are distinct and do not grant authorization.',
@@ -76,7 +77,7 @@ const translations = {
   '本地只读 HTTP 接口：可用':'Local read-only HTTP interface: available',
   '本地只读 HTTP 接口：本次未确认':'Local read-only HTTP interface: not confirmed in this check',
   '<p>stdio MCP：由连接它的宿主启动；本页未检测进程状态。</p><p>Tunnel 客户端：未核实。平台插件注册：未核实。云端工具调用：未验证。</p><p>本机命令：</p>':'<p>stdio MCP: started by its connecting host; this page has not checked its process state.</p><p>Tunnel client: unverified. Platform plugin registration: unverified. Cloud tool invocation: unverified.</p><p>Local command:</p>',
-  '<p>本机配置模板：<code>./codex-plugin/readonly.mcp.json</code></p><p>ChatGPT 连接路径：Plugins → + → Add custom MCP server → Tunnel。需要先配置官方 Tunnel 客户端。</p><p>本地 HTTP 可用不等于远程 MCP 已接通。此入口不会创建凭据、注册插件或开放公网。</p>':'<p>Local configuration template: <code>./codex-plugin/readonly.mcp.json</code></p><p>ChatGPT connection: Plugins → + → Add custom MCP server → Tunnel. Configure the official Tunnel client first.</p><p>Local HTTP availability does not establish a remote MCP connection. This panel does not create credentials, register plugins or expose a public port.</p>',
+  '<p>本机配置模板：<code>codex-plugin/readonly.mcp.json</code></p><p>ChatGPT 连接路径：Plugins → + → Add custom MCP server → Tunnel。需要先配置官方 Tunnel 客户端。</p><p>本地 HTTP 可用不等于远程 MCP 已接通。此入口不会创建凭据、注册插件或开放公网。</p>':'<p>Local configuration template: <code>codex-plugin/readonly.mcp.json</code></p><p>ChatGPT connection: Plugins → + → Add custom MCP server → Tunnel. Configure the official Tunnel client first.</p><p>Local HTTP availability does not establish a remote MCP connection. This panel does not create credentials, register plugins or expose a public port.</p>',
   '当前分段 ':'Section ',' · 已保存 ':' · Saved ','MD 分段进度':'MD section progress',
   '大标签按归属节点去重计数：白0–2，绿3–9，蓝10–24，紫25–49，橙50–99，金100以上。三倍基础直径，每个连接再增加1%。':'Large labels count unique member nodes: white 0–2, green 3–9, blue 10–24, purple 25–49, orange 50–99, gold 100+. Their diameter starts at three times the base, then grows 1% per connection.',
   '归属连接':'Membership connections','按归属节点去重计数；颜色不代表技能程度。':'Unique member nodes determine the count; color does not indicate proficiency.',
@@ -112,6 +113,31 @@ const translations = {
   '本机访问限定':'Local access only','跨站写入被拒绝':'Cross-site write rejected','需要 JSON 请求':'JSON request required','请求过大':'Request too large','JSON 格式无效':'Invalid JSON','请通过新版启动入口运行 Venus':'Run Venus using the updated launcher','操作无效':'Invalid action','当前服务未启动自动执行器':'Automatic worker is not running','接口不存在':'Endpoint not found','方法不支持':'Method not supported','页面不存在':'Page not found',
 };
 Object.assign(translations,{
+ '概念再次检查快速通过':'Concept recheck passed without changes','概念本地核验通过':'Concept local integrity check passed','概念再次检查已登记':'Concept recheck registered','保留原有完整核对记录':'Retain an existing complete review record','复用已核对完整分段':'Reuse a verified complete segment',
+ '再次检查概念':'Check concepts again','不受资料或概念已处理状态限制；先核验，必要时才提炼。':'Available even after processing. Verify first; extract only when needed.',
+ '先比较原文、规则版本与已有结果完整性。未变且完整时直接通过，不重复生成。':'Compare the source, rule version and saved-result completeness first. Unchanged complete content passes without duplicate generation.',
+ '源内容、规则和结果未变且完整：快速通过，未调用模型。':'Source, rules and results are unchanged and complete: passed without a model call.',
+ '本地完整性核验通过，未调用模型。':'Local integrity check passed without a model call.',
+ '现有概念执行器正在运行，未重复建立任务；可在当前核对结束后再次检查。':'The existing concept executor is running. No duplicate task was created; check again after it finishes.',
+ '再次检查已登记到原队列；尚未完成，等待原执行器接续。':'Recheck registered in the existing queue; not completed. Waiting for the original executor.',
+ '用户跳过，等待决定':'User skipped; awaiting a decision',
+ '原因：':'Reason: ',
+ '已就绪':'Ready','排队未完成':'Queued; incomplete',
+ '记录时间：':'Recorded at: ','本地服务已加载':'Local service loaded','界面与恢复日志更新':'UI and recovery logs updated','资料修改保存':'Source edit saved','原始资料保存':'Original source saved','提炼节点保存':'Derived node saved','独立层请求':'Independent layer request','恢复请求':'Recovery request','队列配置保存':'Queue settings saved','分类保存':'Classification saved','关系保存':'Relationship saved',
+ '日志 / 更新日志':'Logs / Updates','仅显示实际记录的事件；未记录的历史不会补造。':'Only recorded events are shown. Unrecorded history is not reconstructed.','日志日期':'Log date','刷新日志':'Refresh logs','正在读取日志…':'Reading logs…','读取更早记录':'Load earlier records','日志读取失败':'Could not read logs','这一天没有已记录的历史。':'No recorded history for this day.',
+ '任务回报边界':'Task reporting boundary','失败立即写入本地事件与当前任务记录。其他任务须读取记录；没有主动跨任务推送。':'Failures are written immediately to local events and the current task record. Other tasks must read the record; no cross-task push is sent.',
+ '当前步骤：':'Current step: ','已核对落盘：':'Verified and saved: ','最后动作：':'Last action: ','最后更新：':'Last update: ','最后保存：':'Last save: ','未提供':'Not provided',
+ '最近恢复请求未启动：':'Latest recovery request did not start: ','待回补异常':'Exceptions awaiting backfill','需要用户决定':'User decision required','等待集中回补':'Awaiting batch backfill','跳过但未完成：':'Skipped and incomplete: ',
+ '继续核对':'Continue review','重试失败段':'Retry failed segment','跳过此失败段':'Skip this failed segment','保留原文、断点和缺口；跳过不算内容完整。':'Originals, checkpoints and gaps are preserved. Skipping does not mean complete content.','跳过原因':'Reason for skipping','已记录跳过，仍未完成':'Skip recorded; still incomplete',
+ '执行器启动目前受限；此页面不会另行启动。':'Executor startup is currently restricted; this page will not start it through another route.','执行器启动目前受限；没有通过此接口启动任何进程。':'Executor startup is restricted. This endpoint did not start a process.','上次执行未通过校验，已保存断点保留。':'The last run failed validation. Saved checkpoints are preserved.','当前没有执行器，继续会接续已保存断点。':'No executor is running. Continue resumes saved checkpoints.',
+ '原文与概念对照':'Compare source and concepts','模型处理':'Model processing','复用本地返回结果':'Reuse a saved local result','校验引用与原文':'Validate references and source evidence','概念实际保存':'Concept saved','补充实际保存':'Supplement saved','本段内容核对已保存':'Segment content review saved','核对完整后跳过':'Skipped after verified completeness','失败段进入异常清单':'Failed segment added to exceptions','未建立无有效节点的关联':'Relation withheld: valid nodes unavailable','本段结果已保存':'Segment result saved','独立任务已排队':'Independent task queued','结果已保存':'Result saved','发生错误':'Error occurred','失败，等待处理':'Failed; awaiting action','内容核对完成':'Content review completed','等待执行器就绪':'Waiting for executor readiness','整篇内容核对完成':'Document content review completed','恢复启动被拦截':'Recovery startup blocked','用户跳过，保留缺口':'User skipped; gap preserved',
+ '失败':'Failed','已保存':'Saved','已受理':'Accepted','已跳过，未完成':'Skipped; incomplete','未启动':'Not started','完整，已跳过':'Complete; skipped','实际保存节点数：':'Nodes actually saved: ','原始错误与处置':'Original error and disposition',
+ '继续这一层':'Continue this layer','保留断点和已有结果；重试只处理这一层。':'Keep checkpoints and saved results. Retry processes this layer only.','暂时跳过这一层':'Skip this layer for now','跳过不增加完成进度，稍后可从原断点继续。':'Skipping does not increase completion. Resume from the same checkpoint later.','跳过必须填写原因':'Provide a reason for skipping',
+ 'AI 连接入口':'AI connections',
+ '已完成分段 ':'Completed segment ','后续分段 ':'Next segment ',
+ '排队中':'Queued','已排队':'Queued',
+ '已处理':'Processed','状态未知，显示上次结果':'State unknown; showing the previous result',
+ '关闭请求已接受，等待后台退出':'Shutdown request accepted; waiting for the service to exit','后台连接已断开':'Backend connection is disconnected','重新使用时，请运行 Start-Venus.cmd。':'Run Start-Venus.cmd to use Venus again.',
   '当前筛选没有匹配节点或关系':'No nodes or relationships match this selection','来源与日期（可选）':'Source and date (optional)','资料原始日期':'Original source date','来源标识':'Source reference','来源版本':'Source version',
   '大标签颜色按归属连接数变化；中心体积最多为普通基准节点的10倍，半径最多约2.154倍。自动自转关闭，局部公转保留。':'Main-tag colours follow membership counts. Centre volume is capped at ten base nodes (radius about 2.154x). Axial spin is off; local orbits continue.',
   '连接增长保留；中心体积不超过普通基准节点10倍。三维轨道预留实体净空，自动自转为0，公转继续。':'Connection growth remains within the ten-base-node centre volume cap. 3D orbital volumes reserve clearance. Axial spin is zero; orbital motion continues.',
@@ -127,9 +153,114 @@ Object.assign(translations,{
   '模型名':'Model name','服务基础地址（本地只允许 localhost / 127.0.0.1 / ::1）':'Service base URL (local mode: loopback only)','密钥环境变量名（不填写密钥本身）':'API-key environment variable name (never the key itself)','推理强度（留空使用模型默认）':'Reasoning effort (blank uses the model default)',
   '每段原文字符':'Source characters per section','总输入字符预算':'Total input character budget','输出 token 上限':'Output token limit','每轮关联候选上限':'Candidate limit per section','候选摘录字符上限':'Characters per candidate excerpt','每轮分类补全候选上限':'Classification candidates per section',
 });
+Object.assign(translations,{
+ '暂停动画':'Pause animation','继续动画':'Resume animation','资料处理进度':'Source processing','Vault 搜索索引':'Vault search index','尚未处理':'Not processed','开始这一层':'Start this layer','从断点重试':'Retry from checkpoint','按资料单独处理':'Process one source','选择资料':'Select a source',
+ '正在读取四层独立进度…':'Loading four independent progress records…','四层处理入口将在安全加载新版后台后可用。':'Independent layer controls will be available after the updated backend is safely loaded.',
+ '已处理 · 内容待核对':'Processed · content review pending','已对照原文核对概念内容':'Concept content compared with the source','提取覆盖不等于概念内容完整':'Extraction coverage is not proof of complete concept content',
+ '仅使用已保存的有据知识点；缺少知识依据时先启动知识层，不自动重跑知识层。':'Uses saved knowledge only. Start the knowledge layer first when evidence is missing; other layers are not rerun.',
+ '只读原始 Vault，独立于知识和技能。已处理覆盖不等于概念内容完整。':'Reads the original Vault independently of knowledge and skills. Processed coverage does not prove content completeness.',
+ '开始检测':'Start checking','正在检查本机连接…':'Checking local connections…','模型接入配置':'Model connection settings','MCP 只读知识连接':'MCP read-only knowledge connection','仅用于接下来新建的独立任务':'Use only for new independent tasks','已用于新任务；当前处理保持原接入':'Selected for new tasks; current processing keeps its provider',
+ '点击开始后，仅检查本机兼容客户端、已有配置和指定本地服务，不调用模型、不切换当前分析。':'Start checks compatible local clients, existing settings, and specific local services. No model call or provider switch.',
+ '网页登录不等于本机模型 API。MCP 用于只读知识检索，不能代替模型推理连接。':'A web session is not a local model API. MCP retrieves knowledge and does not replace a model connection.',
+ '当前分析继续使用原接入。新增登录、凭证和授权由你完成，不会自动启用公网连接。':'Current analysis keeps its provider. You complete any new sign-in or credential setup; no public connection is enabled automatically.'
+});
+Object.assign(translations,{
+ '人工智能':'Artificial intelligence','项目':'Projects','子分类':'Subcategories','份原始资料':'original sources','同一项目范围（按分支标题归组）':'Shared project scope (grouped by branch titles)',
+ '独立任务正在处理':'Independent task running','历史认可方式':'Historical recognition','明确认可':'Explicit endorsement','隐含认可':'Implicit acceptance','话题结束':'Topic ended','不构成操作授权':'Does not authorize operations','条件不同':'Different premises','冲突':'Conflicting directions','演进':'Evolution',
+ '当前后台尚未加载四层处理入口；已保存成果保留，请在安全加载新版后台后使用。':'The backend has not loaded independent-layer controls yet. Saved work is retained; use this after a safe backend reload.',
+ '现有概念内容核对正在运行，概念补提将等候它，避免重复处理。':'Existing concept review is running. Additional concept extraction waits to avoid duplicate processing.',
+ '索引已建立，可搜索':'Search index built','这一层已有保存结果':'This layer has saved results','这一层已排队，将保留断点接续':'This layer is queued and will continue from its checkpoint',
+ '安装或打开 Claude 本机客户端，并由你完成登录。':'Install or open the local Claude client and complete sign-in yourself.',
+ '若使用模型 API，在“模型接入配置”填写兼容服务地址、模型名与已由你设置的密钥环境变量名；不在页面填写密钥。':'For a model API, configure the compatible endpoint, model, and name of an existing key environment variable. Never enter the key on this page.',
+ '安装或打开 Gemini 本机客户端，并由你完成登录。':'Install or open the local Gemini client and complete sign-in yourself.',
+ '若使用 Gemini API，由你设置密钥环境变量，再在“模型接入配置”选择 Gemini 接入并填写模型名。':'For the Gemini API, set the key environment variable yourself, then select Gemini and enter its model in connection settings.',
+ '安装 Codex 本机客户端并完成登录。':'Install the local Codex client and complete sign-in.',
+ '本入口只读取登录状态，不会打开授权流程或切换现有分析。':'This reads sign-in status only. It does not start authorization or switch current analysis.',
+ '启动本机 Ollama、LM Studio 或已配置的兼容模型服务。':'Start local Ollama, LM Studio, or an existing compatible model service.',
+ '在本机服务中加载模型；本入口仅定点检查配置地址及 127.0.0.1:11434、127.0.0.1:1234。':'Load a model locally. Checks are limited to the configured endpoint and 127.0.0.1:11434 or 127.0.0.1:1234.',
+ '请先在对应 AI 入口开始检测并确认可用连接':'Start checking in the corresponding AI entry to confirm an available connection first',
+ '尚未发现可直接复用的模型连接':'No reusable model connection found yet','已有模型连接可复用；本次未调用模型':'An existing model connection can be reused; no model call was made',
+ '已发现本机客户端，尚未确认登录':'Local client found; sign-in is not confirmed','已发现本机客户端；网页或客户端登录不等于可用的模型 API，需配置兼容连接':'Local client found. Web or client sign-in does not establish a callable model API; configure a compatible connection.',
+ '已有本地模型服务可复用；未调用推理':'An existing local model service can be reused; inference was not called','已发现本地服务，请先加载模型':'Local service found; load a model first','未发现上述定点地址的可用模型服务':'No available model service found at the specified local endpoints',
+ '当前连接入口尚未就绪':'This connection entry is not ready','原始资料不存在':'Original source not found','资料处理层无效':'Invalid processing layer',
+ '提取覆盖已完成；内容完整性核对仍由现有核对任务独立继续。':'Extraction coverage is complete; the existing content-completeness review continues independently.',
+ '该资料尚无可用知识依据。请先启动 AI 知识点层；不会替你重跑其他层。':'No usable knowledge evidence exists for this source. Start its knowledge layer first; other layers will not be rerun.',
+ '来源已变化，请重新核对断点后启动':'The source changed. Review its checkpoint before starting again','来源已变化，本段未提交':'The source changed; this section was not committed','独立层任务返回了其他层内容，未保存':'An independent task returned another layer; nothing was saved',
+ '当前后台尚未加载 AI 连接入口':'The backend has not loaded AI connection entries yet','尚未加载模型':'No loaded model','未知 AI 入口':'Unknown AI entry'
+});
+Object.assign(translations,{
+ '正在执行，等待实际结果…':'Running; waiting for the actual result…','操作已返回，请查看实际结果':'Operation returned; see the actual result','失败：':'Failed: ',
+ '请求已接受，等待实际状态':'Request accepted; waiting for actual state','已排队，尚未完成':'Queued; not completed','请求已返回，状态已确认':'Request returned; state confirmed',
+ '已保存完成数':'Saved completion count','当前文件：':'Current file: ','已落盘：':'Saved: ','当前分段：':'Current segment: ','后续起点：':'Next offset: ',
+ '本段范围尚未提供':'Current range not provided','已核实完成：':'Verified complete: ','最后保存时间：未提供':'Last save time: not provided','状态读取：':'State read: ',
+ '尚未取得':'Not available','最近落盘推进（本页面观察）：':'Last saved progress observed on this page: ','本页面尚未观察到新增落盘进度':'No new saved progress observed on this page',
+ '失败，已停止':'Failed; stopped','独立任务排队中':'Independent tasks queued','独立任务失败，需核对':'Independent task failed; needs review','当前队列已完成':'Current queue completed',
+ '联合提取队列':'Joint extraction queue','失败，需核对':'Failed; needs review','已保存覆盖':'Saved coverage',
+ '状态读取失败；保留上次显示，不能确认新的进度':'State read failed; showing the previous state. New progress is unconfirmed.',
+ '本地 AI':'Local AI','连接':'Connection',
+ '白色':'White','绿色':'Green','蓝色':'Blue','紫色':'Purple','橙色':'Orange','金色':'Gold',
+ '多轮跟进':'Multiple follow-ups','反复推进':'Repeated progress','跨天持续':'Continued across days','持续投入':'Sustained effort','长期重点':'Long-term priority',
+ '用户指定：现在的山河扇项目可标为金色。':'User designated ShanheFan as a gold priority project.',
+ '内容相关':'Related content','逻辑相同':'Same logic','逻辑相连':'Logical connection','步骤相连':'Sequential steps','程序相连':'Procedural connection','主分类归属':'Main-domain membership','共用知识依据':'Shared knowledge evidence','观点冲突':'Conflicting views',
+ '概念内容核对正在处理':'Concept content review running','概念内容核对需复核':'Concept content review needs attention','概念内容核对已暂停':'Concept content review paused',
+ '独立连接配置':'Independent connection settings','此配置仅属于当前入口，不改变正在处理资料的模型。由你完成新增登录或密钥授权；这里只填写环境变量名。':'These settings belong only to this entry and do not change the model processing existing sources. Complete new sign-in or authorization yourself; enter only environment variable names here.',
+ '独立连接已保存；当前处理保持原接入':'Independent connection saved; current processing keeps its provider','服务基础地址':'Service base URL','HTTP / OpenAI 兼容':'HTTP / OpenAI-compatible','本地 AI / OpenAI 兼容':'Local AI / OpenAI-compatible',
+ '该入口的接入方式不匹配':'The provider does not match this connection entry','这份资料正在联合处理，请在当前分段保存后再启动独立补层。':'This source is being processed jointly. Start an independent layer after the current section is saved.',
+ '已配置，尚未验证连接':'Configured; connection not tested','未配置：':'Not configured: ','只读知识检索，不能代替模型推理连接':'Read-only knowledge retrieval; does not replace model inference','只读知识检索':'Read-only knowledge retrieval'
+});
 const keys = Object.keys(translations).sort((a,b)=>b.length-a.length);
 const pattern = new RegExp(keys.map(key=>key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'),'g');
+Object.assign(translations,{
+ '内容核对':'Content review','覆盖回补':'Coverage backfill','自动提取':'Automatic extraction','独立处理':'Independent processing',
+ '异常分段自动回补中':'Backfilling exception ranges','审批或认证阻塞，未运行':'Approval or authentication blocked; not running',
+ '执行器已停止，保留断点':'Executor stopped; checkpoint preserved','当前没有活动执行器，保留已保存断点。':'No active executor; saved checkpoint preserved.',
+ '概念覆盖回补正在处理':'Concept coverage backfill running','主分类归纳中':'Classifying main categories',
+ '覆盖回补 / 自动提取':'Coverage backfill / automatic extraction','覆盖回补 / 自动提取未运行':'Coverage backfill / automatic extraction not running',
+ '自动处理已关闭；不代表内容核对停止。':'Automatic extraction is disabled; content review is independent.',
+ '原提取队列已处理':'Original extraction queue processed',' 项活动流程':' active flows','异常后移，继续队列':'Exceptions deferred; queue continues',
+ '保留未完成缺口':'Unresolved gaps preserved','其他流程状态':'Other flow states','最近保存动作：':'Last saved action: ',
+ '查看原因与进度':'View reason and progress','历史概念覆盖回补':'Historical concept coverage backfill',
+ '自动恢复正在接续':'Automatic recovery continuing','审批或认证阻塞':'Approval or authentication blocked',
+ '用户跳过后已暂停；缺口保留，尚未完成。':'Paused after a user skip; the gap remains incomplete.',
+ '审批或认证阻塞，须先解决权限；保留断点且不自动越过。':'Approval or authentication is blocked. Resolve access first; checkpoint preserved without automatic bypass.',
+ '执行器已停止，保留断点。':'Executor stopped; checkpoint preserved.'
+});
+Object.assign(translations,{
+ 'Token：采集器待自然加载':'Tokens: collector awaiting natural reload','当前调用保持运行；采集前历史不回填。':'Current calls continue; pre-collection history is not reconstructed.',
+ 'Token：暂未返回用量':'Tokens: usage not yet returned','尚无已采集回执；不表示零消耗。':'No usage receipt recorded; this does not mean zero consumption.',
+ '累计已返回 Token：':'Recorded tokens: ',' 份总量回执':' total-usage receipts','Token：暂未返回总量':'Tokens: total usage not yet returned',
+ '仅累计采集启用后已返回的回执；缓存是输入子集，不重复相加。':'Counts only receipts returned since collection began. Cached input is a subset of input, never added twice.',
+ '暂未返回':'Not yet returned','输入 / 输出 / 缓存输入子集：':'Input / output / cached input subset: ',
+ '已返回 / 待回执 / 无用量回执：':'Returned / awaiting receipt / usage unavailable: ','已中断，消耗未知：':'Interrupted; consumption unknown: ',
+ '字段回执数（输入/输出/缓存/总量）：':'Receipts per field (input/output/cache/total): ',
+ '最近请求平均输出 token/秒：':'Latest request average output tokens/s: ',
+ '此提供方输出不含单列思考 token。':'This provider reports thought tokens separately from output.',
+ '输出按提供方口径；思考 token 为输出子集。':'Provider-defined output; reasoning tokens are a subset of output.',
+ 'token/秒：暂未返回，未估算。':'Tokens/s: unavailable; no estimate.',
+ '模型名来自配置；回执未确认时不声称已解析型号。':'Model name comes from configuration until confirmed by the provider.',
+ '无用量数据；未接入或尚未返回回执。':'No usage data; not connected or no receipt returned.',
+ '采集启用：':'Collection enabled: ',
+ '结束回执速率为单个请求端到端平均值，包含排队和传输；不相加为并发吞吐，不作实时速率。':'Terminal-receipt speed is the end-to-end average for one request, including waiting and transfer. Per-request rates are not added as concurrent throughput or presented as live speed.'
+});
+Object.assign(translations,{
+'重复语义复核已取消':'Repeated semantic review cancelled',
+'只处理新增、变化或覆盖缺口；不复审已保存内容':'Only new, changed or uncovered ranges are extracted; saved content is not re-reviewed.',
+'仅本地检查源指纹与覆盖；无缺口不调用模型。':'Checks local source fingerprints and coverage only; no model call without gaps.',
+'源指纹和覆盖未变，无缺口：本地跳过，未调用模型。':'Source fingerprint and coverage are unchanged with no gaps: skipped locally without a model call.',
+'仅覆盖缺口已登记到现有概念层；尚未完成。':'Only coverage gaps entered the existing concept layer; not yet completed.',
+'只检查本地源指纹与提取覆盖。已处理且无缺口时跳过；仅缺失、新增或变化范围进入提取，不语义复审。':'Checks local source fingerprints and extraction coverage only. Processed ranges with no gaps are skipped; only missing, new or changed ranges are extracted. No semantic re-review.',
+'用户已取消重复语义复核；原有结果和断点保留。':'User cancelled repeated semantic review; saved results and checkpoints are preserved.'
+});
+Object.assign(translations,{'最近请求均速：':'Latest request average: ','均速：暂未返回':'Average speed: not yet returned'});
+Object.assign(translations,{'概念模板读取失败':'Could not read the concept template','概念范围读取失败':'Could not read the concept scope','讨论假设':'Discussion hypothesis','旧记录保留，未标注用户认可；仅供参考，不覆盖当前指示。':'Legacy record retained without a user-endorsement label; reference only, never overriding current instructions.'});
 export function tr(value) {
   if(language !== 'en' || typeof value !== 'string') return value;
+  if(Object.hasOwn(translations,value))return translations[value];
   return value.replace(pattern, key=>translations[key]);
+}
+export function heatText(heat) {
+  const reason=language==='en'&&heat.basis==='source-activity'
+    ? `${heat.userTurns} user follow-ups, ${heat.activeDays} discussion dates, ${heat.sourceConversations} source conversations; scored from cited messages, not word count or keyword frequency.`
+    : heat.reason==='用户指定：现在的山河扇项目可标为金色。'?tr(heat.reason):heat.reason;
+  return {name:tr(heat.name),label:tr(heat.label),reason};
 }

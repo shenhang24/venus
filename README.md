@@ -49,11 +49,9 @@ Read the [Page Tour](docs/PAGE-TOUR.md) for each text view, network, integration
 - **Vault** preserves original Markdown from sources you deliberately import.
 - **AI Knowledge** provides traceable facts and methods for retrieval and later answers. Near-duplicate reuse requires a measured score of at least 95%: NFKC-normalized core text, whitespace removed, character-bigram multiset Sorensen-Dice. This is textual similarity, not semantic certainty. Related but different statements remain separate.
 - **AI Skills** stores user-endorsed methods, applicable scope and limitations, with evidence distinguishing user instructions from assistant suggestions and references. Retrieved methods never override current instructions or authorization. Legacy or unconfirmed records are not treated as endorsed executable methods.
-- **Concept Cloud** makes the understanding gained through discussion readable. A complete theme can span several questions and revisions. Admission requires traceable user endorsement of the relevant conclusion; silence, an assistant's own conclusion, or permission to execute is insufficient. Unresolved questions are optional records, not forced tasks. Independent Reference sections preserve source locations and how the understanding formed.
+- **Concept Cloud** organizes ideas derived directly from the currently saved Vault material, including user edits. Related ideas can retain distinct conditions, disagreements and evolution, with references for tracing their sources.
 
-Concept extraction compares bounded candidates (up to four from the same source and four across sources). Shared cores and compatible additions can reuse a stable concept; different conditions, conflicts and evolution remain distinct and linked. Sources, endorsement evidence and manual edits are protected. This bounded process does not guarantee exhaustive semantic deduplication.
-
-Future unfinished segments and new material extract concepts in the existing analysis call. The initial active batch is frozen when the new analyzer first starts. Once it finishes, missing historical concepts are filled without regenerating completed knowledge or skills, using at most one of the five analysis slots. Paused or review-required entries in that batch delay backfill. Completed segments are not rerun merely by upgrading.
+Only new, changed or genuinely uncovered ranges enter extraction. Unchanged completed ranges, including valid zero-concept results, skip model generation. Rule-version changes and source references do not schedule semantic re-review. Venus does not reopen old conversations to judge the truth of current material or replace a user's edited version. Content and quoted instructions remain data, never execution authorization.
 
 Each layer has a readable content view and a separate network view. Titles and paragraphs summarize the actual content; tags support retrieval rather than replace meaningful names. English and Chinese interfaces are available. Read the [Page Tour](docs/PAGE-TOUR.md).
 
@@ -65,7 +63,7 @@ Continuous hierarchical orbits, bounded trails and exterior transfer channels sh
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.4.1**. See [changes](CHANGELOG.md).
+Current release: **0.5.0**. See [changes](CHANGELOG.md).
 
 ## Install and start
 
@@ -168,3 +166,13 @@ Daily execution requires your explicit configuration and authorization, access t
 ## Credentials
 
 Basic local reading and editing require no model credentials. Codex analysis uses your existing Codex sign-in and account allowance. External model APIs require your own provider credentials; local inference requires your service endpoint and model, with authentication only if your service requires it. Keep secrets outside project files and configure only environment-variable names. Optional remote-connection credentials are not required for local CLI or stdio MCP. See the complete [credential requirements](docs/DEPLOYMENT.md#credentials).
+
+## Architecture and the 0.5.0 update
+
+![Venus program architecture](docs/images/venus-architecture-en.png)
+
+[Architecture and processing boundaries](docs/ARCHITECTURE.md) · [SVG diagram](docs/images/venus-architecture-en.svg) · [Detailed update notes](UPDATE-NOTES-2026-10-19.md)
+
+This release adds independent layer controls and network pause/resume, truthful activity and exception recovery, current-material incremental extraction, and provider usage receipts. The bottom status bar reports returned token counters and the latest request's average output rate, including waiting and transport; it does not claim live streaming throughput. Unavailable counters remain unavailable.
+
+Text fields, editors, dialogs and floating panels now have consistent padding, line spacing and wrapping. Long dialog content scrolls independently while actions stay visible. The [synthetic spacing example](docs/images/12-dialog-spacing.png) uses no personal material. Existing English demo screenshots remain illustrative and may predate these controls.

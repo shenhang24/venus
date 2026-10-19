@@ -1,4 +1,83 @@
 import { tr, uiLocale } from './i18n.js';
+// Shared UI feedback. Completion here means the handler returned, never that a queued job finished.
+const activeActions=new Map();
+let actionContext=null,feedbackDocument=null;
+const wrappedAction=Symbol('venus-button-action');
+function buttonKey(button){return button.id||JSON.stringify(Object.entries(button.dataset).filter(([key])=>!key.startsWith('action')).sort())+'|'+(button.getAttribute('aria-label')||button.textContent.trim());}
+function showAction(context,status,message){
+ if(!feedbackDocument)return;
+ let host=feedbackDocument.querySelector('#action-feedback');
+ if(!host){host=feedbackDocument.createElement('div');host.id='action-feedback';host.setAttribute('role','status');host.setAttribute('aria-live','polite');}
+ const modal=feedbackDocument.querySelector('#modal[open] #modal-form');(modal||feedbackDocument.body).append(host);
+ host.dataset.state=status;host.textContent=context.label+' · '+message;
+ context.button.dataset.actionState=status;
+}
+export function currentButtonAction(){return actionContext||(activeActions.size===1?[...activeActions.values()][0]:null);}
+export function actionResult(context,{error=null,message=null}={}){if(!context)return;if(error)context.error=error;else if(message)context.message=message;}
+export function runButtonAction(button,action,existingContext=null){
+ if(!button)return Promise.resolve().then(action);
+ const key=buttonKey(button);if(activeActions.has(key))return activeActions.get(key).promise;
+ const context=Object.assign(existingContext||{},{button,key,label:button.getAttribute('aria-label')||button.textContent.trim()});
+ activeActions.set(key,context);button.dataset.actionBusy='true';button.setAttribute('aria-busy','true');button.setAttribute('aria-disabled','true');
+ showAction(context,'running',tr('正在执行，等待实际结果…'));
+ const previous=actionContext;actionContext=context;let result;
+ try{result=action();}catch(error){result=Promise.reject(error);}finally{actionContext=previous;}
+ context.promise=Promise.resolve(result).then(value=>{showAction(context,context.error?'failed':'returned',context.error?tr('失败：')+context.error:(context.message||tr('操作已返回，请查看实际结果')));return value;},error=>{context.error=error.message;showAction(context,'failed',tr('失败：')+error.message);throw error;}).finally(()=>{
+  activeActions.delete(key);for(const item of feedbackDocument?.querySelectorAll('button')||[])if(buttonKey(item)===key){delete item.dataset.actionBusy;item.removeAttribute('aria-busy');item.removeAttribute('aria-disabled');}
+  delete button.dataset.actionBusy;button.removeAttribute('aria-busy');button.removeAttribute('aria-disabled');
+ });return context.promise;
+}
+export function installButtonFeedback(doc){
+ if(feedbackDocument)return;feedbackDocument=doc;
+ doc.addEventListener('click',event=>{
+  const button=event.target.closest?.('button');if(!button)return;
+  if(activeActions.has(buttonKey(button))){event.preventDefault();event.stopImmediatePropagation();return;}
+  button.classList.add('is-pressed');setTimeout(()=>button.classList.remove('is-pressed'),150);
+  const handler=button.onclick;if(!handler||handler[wrappedAction])return;
+  const wrapper=function(event){
+   // Native async handlers are tracked as one action, including API calls before their first await.
+   if(handler.constructor.name==='AsyncFunction')return runButtonAction(button,()=>handler.call(this,event)).catch(()=>{});
+   const previous=actionContext;const context={button,label:button.getAttribute('aria-label')||button.textContent.trim()};actionContext=context;let result;
+   try{result=handler.call(this,event);}finally{actionContext=previous;}
+   if(result?.then)return runButtonAction(button,()=>result,context).catch(()=>{});return result;
+  };wrapper[wrappedAction]=true;button.onclick=wrapper;
+ },true);
+ new MutationObserver(()=>{for(const button of doc.querySelectorAll('button'))if(activeActions.has(buttonKey(button))){button.dataset.actionBusy='true';button.setAttribute('aria-busy','true');button.setAttribute('aria-disabled','true');}}).observe(doc.body,{childList:true,subtree:true});
+}
+export class SavedProgressObserver{
+ constructor(){this.records=new Map();}
+ observe(key,offset,now=Date.now(),savedToken=null){
+  let old=this.records.get(key);if(old&&offset<old.offset)old=null;const next={offset,firstRead:old?.firstRead||now,lastRead:now,lastAdvance:old?.lastAdvance||null};
+  if(old&&(offset>old.offset||(savedToken&&((old.savedToken&&savedToken>old.savedToken)||(!old.savedToken&&Date.parse(savedToken)>old.lastRead)))))next.lastAdvance=now;next.savedToken=savedToken;this.records.set(key,next);return next;
+ }
+}
+export function conceptRecheckMessage(result){return tr(result.needsUser?result.message:result.fastPassed?'源指纹和覆盖未变，无缺口：本地跳过，未调用模型。':result.structuralPassed?'本地完整性核验通过，未调用模型。':result.inProgress?'现有概念执行器正在运行，未重复建立任务；可在当前核对结束后再次检查。':'仅覆盖缺口已登记到现有概念层；尚未完成。');}
+export function processingState(state,now=Date.now()){
+ const review=state.conceptContentReview,a=state.analysis,independent=state.independentLayers,flows=[],evidence=state.processingEvidence||{};
+ const saved=id=>evidence[id]?.time||null,mainComplete=Number.isFinite(a?.completed)&&a.completed===a.total&&(!a.concepts||a.concepts.coverageComplete===true),mainFailures=(a?.needsReview||0)+(a?.concepts?.failedSegments||0);
+ if(review?.current){const c=review.current,restricted=review.blocked??(!review.workerRunning&&(!review.lastError?.current?.id||review.lastError.current.id===c.id)&&(!review.lastError?.time||review.lastError.time>=(review.lastUpdatedAt||''))&&/permission|authentication|blocked by policy|权限|审批|认证/i.test(review.lastError?.message||'')),mode=review.status==='cancelled-semantic-review'?'cancelled':review.workerRunning?'running':restricted?'blocked':review.status==='needs-review'?'failed':'paused';
+  flows.push({key:c.id+':review',pipeline:tr('内容核对'),mode,label:tr(mode==='cancelled'?'重复语义复核已取消':mode==='running'?(review.queuePhase==='backfill'?'异常分段自动回补中':'概念内容核对正在处理'):mode==='blocked'?'审批或认证阻塞，未运行':mode==='failed'?'失败，已停止':review.status==='working'?'执行器已停止，保留断点':'概念内容核对已暂停'),title:c.title,sourceId:c.id,offset:c.savedOffset??c.offset,nextOffset:c.offset,total:c.total??null,range:c.range||null,count:[review.completed,review.total],error:mode==='failed'||mode==='blocked'?review.lastError?.message:null,reason:mode==='running'?null:review.stopReason||review.controls?.reason||tr('当前没有活动执行器，保留已保存断点。'),step:review.phase,lastAction:review.lastAction,lastUpdatedAt:review.lastUpdatedAt,lastSavedAt:[review.lastSavedAt,saved(c.id)].filter(Boolean).sort().at(-1)||null,controls:review.controls,lastTaskEvent:review.lastTaskEvent,exceptions:(review.exceptions||[]).filter(e=>!['resolved','superseded'].includes(e.status)),unresolvedSkips:review.unresolvedSkips||0});
+ }
+ for(const work of independent?.active||[])flows.push({key:work.sourceId+':'+work.layer,pipeline:tr('独立处理'),mode:'running',label:tr(work.step==='VALIDATING'?'校验引用与原文':work.step==='SAVED'?'结果已保存':'独立任务正在处理'),title:state.nodes?.find(n=>n.id===work.sourceId)?.title||work.sourceId,sourceId:work.sourceId,offset:work.offset,total:work.total,range:work.currentRange||null,step:work.step,lastAction:work.lastAction,lastUpdatedAt:work.lastUpdatedAt,lastSavedAt:work.lastSavedAt||saved(work.sourceId)});
+ for(const file of a?.activeFiles||[]){const id=file.sourceId.replace(/^concept-only:/,''),progress=a.fileProgress?.[file.sourceId]||a.fileProgress?.[id];flows.push({key:file.sourceId+':main',pipeline:tr(file.taskKind==='concept-only'?'覆盖回补':'自动提取'),mode:'running',label:tr(file.taskKind==='concept-only'?'概念覆盖回补正在处理':file.taskKind==='main-tags'?'主分类归纳中':'正在处理'),title:file.title,sourceId:id,offset:file.taskKind==='concept-only'?(a.concepts?.fileProgress?.[id]?.offset??file.offset):(progress?.offset||0),total:file.total,range:[file.offset,file.end],step:file.taskKind==='concept-only'?'CONCEPT_BACKFILL':file.taskKind==='main-tags'?'CLASSIFYING':'MODEL_RUNNING',segment:(progress?.parts||0)+1,lastSavedAt:saved(id)});}
+ if(independent?.queued)flows.push({key:'layers:queued',mode:'queued',label:tr('独立任务排队中'),offset:0,total:null});
+ if(independent?.needsReview)flows.push({key:'layers:failed',mode:'failed',label:tr('独立任务失败，需核对'),offset:0,total:null});
+ if(a&&!(a.activeFiles||[]).length&&flows.length){const mode=!a.enabled?'paused':a.cooldownUntil>now?'retrying':mainFailures?'failed':mainComplete?'complete':'queued';flows.push({key:'main:inactive',pipeline:tr('覆盖回补 / 自动提取'),mode,label:tr(mode==='paused'?'覆盖回补 / 自动提取未运行':mode==='retrying'?'等待自动重试':mode==='failed'?'有处理失败的资料，待核对':mode==='complete'?'原提取队列已处理':'排队中'),reason:a.pauseReason||(mode==='paused'?tr('自动处理已关闭；不代表内容核对停止。'):mode==='retrying'?new Date(a.cooldownUntil).toLocaleString(uiLocale()):a.lastError||null),offset:0,total:null});}
+ const activities=flows.filter(f=>f.mode==='running');
+ if(!activities.length&&!flows.length){const mode=!a?'unknown':a.cooldownUntil>now?'retrying':mainFailures?'failed':!a.enabled?'paused':mainComplete?'complete':a.cancelled?'paused':'queued';flows.push({key:'main',pipeline:tr('自动提取'),mode,label:tr(!a?'等待运行状态':mode==='retrying'?'等待自动重试':mode==='failed'?'有处理失败的资料，待核对':mode==='paused'?'已暂停':mode==='complete'?'当前队列已完成':'排队中'),reason:a?.pauseReason||a?.lastError||null,offset:a?.segments||0,total:null,count:a?[a.completed,a.total]:null});}
+ const primary=activities[0]||flows.find(f=>f.mode==='blocked')||flows.find(f=>f.mode==='failed')||flows.find(f=>f.mode==='queued')||flows[0];
+ const exceptions=flows.filter(f=>f.mode!=='cancelled').flatMap(f=>f.exceptions||[]),deferred=exceptions.filter(e=>!['user-skipped','needs-user'].includes(e.status));
+ const latestSave=[...flows.map(f=>f.lastSavedAt),...Object.values(evidence).map(e=>e.time)].filter(Boolean).sort().at(-1)||null,lastSavedAction=Object.values(evidence).find(e=>e.time===latestSave)?.action;
+ return {...primary,activities,flows,exceptions,deferredExceptions:deferred,notices:flows.filter(f=>f!==primary&&f.mode!=='running'),lastSavedAt:latestSave,lastSavedAction,label:activities.length?primary.label+(activities.length>1?' · '+activities.length+tr(' 项活动流程'):'')+(deferred.length?' · '+tr('异常后移，继续队列'):exceptions.length?' · '+tr('保留未完成缺口'):''):primary.label};
+}
+export function collectProcessingEvidence(rows,previous={}){const next={...previous};for(const e of rows||[]){const actual=['CONCEPT_SAVED','SUPPLEMENT_SAVED','CONTENT_CHECK_SAVED','LAYER_SEGMENT_SAVED','DOCUMENT_CHECKED','ALL_CHECKED'].includes(e.action)&&(!['CONCEPT_SAVED','SUPPLEMENT_SAVED'].includes(e.action)||e.savedCount>0),api=e.status==='saved'&&['/api/import','/api/edit','/api/upsert','/api/relation','/api/main-tags'].includes(e.action);if((actual||api)&&e.sourceId&&(!next[e.sourceId]||e.time>next[e.sourceId].time))next[e.sourceId]={time:e.time,action:e.action,savedCount:e.savedCount};}return next;}
+export function tokenUsagePresentation(snapshot){
+ if(snapshot?.unavailableReason==='collector-not-loaded')return {headline:tr('Token：采集器待自然加载'),groups:[],note:tr('当前调用保持运行；采集前历史不回填。')};
+ if(!snapshot?.enabledAt)return {headline:tr('Token：暂未返回用量'),groups:[],note:tr('尚无已采集回执；不表示零消耗。')};
+ const groups=snapshot.groups||[],known=groups.filter(g=>g.coverage.total>0),sum=known.reduce((n,g)=>n+g.counts.total,0),coverage=known.reduce((n,g)=>n+g.coverage.total,0),returned=groups.reduce((n,g)=>n+g.returned,0),pending=groups.reduce((n,g)=>n+g.pending,0);
+ const latest=groups.map(g=>g.latest).filter(Boolean).sort((a,b)=>a.endedAt.localeCompare(b.endedAt)).at(-1),rateHeadline=latest?.averageOutputPerSecond!==null&&Number.isFinite(latest?.averageOutputPerSecond)?tr('最近请求均速：')+latest.averageOutputPerSecond.toFixed(2)+' token/s · '+latest.family+'/'+latest.model:tr('均速：暂未返回');
+ return {headline:coverage?tr('累计已返回 Token：')+sum.toLocaleString(uiLocale())+' · '+coverage+'/'+returned+tr(' 份总量回执'):tr('Token：暂未返回总量'),rateHeadline,groups,note:tr('仅累计采集启用后已返回的回执；缓存是输入子集，不重复相加。'),enabledAt:snapshot.enabledAt,pending};
+}
 export function knowledgeForSource(nodes, sourceId) {
   const source = nodes.find(n => n.id === sourceId);
   const ids = new Set([sourceId, ...(source?.mergedFrom || [])]);
@@ -58,7 +137,7 @@ export function fileStageProgress(analysis, sourceId, now = Date.now()) {
   const stopped=!analysis?.enabled || analysis?.cancelled || analysis?.cooldownUntil>now || ['review','retry','paused'].includes(progress?.status);
   const completed=progress?.parts||0,total=progress?.totalParts??(done?completed:null);
   const current=done?completed:completed+1;
-  const label=tr('当前分段 ')+current+(total===null?'':' / '+total)+tr(' · 已保存 ')+completed+tr(' 段');
+  const label=tr(done?'已完成分段 ':active&&!stopped?'当前分段 ':'后续分段 ')+current+(total===null?'':' / '+total)+tr(' · 已保存 ')+completed+tr(' 段');
   return {label,total,current,completed,animating:!!active&&!stopped&&!done,done};
 }
 // Drafts are independent of refreshed server snapshots and survive navigation.

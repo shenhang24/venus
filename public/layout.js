@@ -279,7 +279,8 @@ export class AffinityLayout {
     }
     for(const group of this.sharedOrbits)if(this.orbits[group.id])this.orbits[group.id].launchKey='shared:'+group.hosts.map(i=>nodes[i].id).sort().join('|');
     this.centralOrbitFrame=orbitalFrame([...this.starIds].sort().join('|'));
-    for(const o of Object.values(this.orbits)){o.frame=orbitalFrame(o.planeKey||o.host+':ring:'+(o.ring??'central'));o.axis=o.frame.normal;}
+    const orbitFrames=new Map();
+    for(const o of Object.values(this.orbits)){const key=o.planeKey||o.host+':ring:'+(o.ring??'central');if(!orbitFrames.has(key))orbitFrames.set(key,orbitalFrame(key));o.frame=orbitFrames.get(key);o.axis=o.frame.normal;}
     for(const group of this.sharedOrbits)group.frame=orbitalFrame(this.membershipPlaneKeys.get(group.id));
     this.orbitDepths=Object.create(null);
     const depth=id=>this.orbitDepths[id]??(this.orbitDepths[id]=this.orbits[id]?1+depth(this.orbits[id].host):0);
@@ -375,6 +376,7 @@ export class AffinityLayout {
     const systemBound=Math.max(centralExtent,...nodes.filter(n=>this.orbits[n.id]?.kind==='planet').map(n=>this.orbits[n.id].targetRadius+this.systemExtents[nodeIndex.get(n.id)]+2*this.centralOrbitRadius));
     this.tourWorldBound=Math.max(100,systemBound*4);
     this.freeOrbits=new Map();
+    this.freeNodes=free;
     for(let k=0;k<free.length;k++){
       const {row:shell,slot,capacity:slots}=fibonacciOrbitSlot(k);
       const radius=Math.max(systemBound+freeSize+SURFACE_GAP+shell*(2*freeSize+SURFACE_GAP),(slots>1?(freeSize+SURFACE_GAP/2)/Math.sin(Math.PI/slots):0));
@@ -412,7 +414,17 @@ export class AffinityLayout {
   }
 
   advance(elapsed) {
-    this.accumulator += Math.max(0, Math.min(elapsed, 0.1))*this.timeScale;
+    // Active display time is never clipped by frame cost. The view resets its
+    // timestamp after a hidden-tab pause instead of slowing visible animation.
+    this.accumulator += Math.max(0, Number.isFinite(elapsed)?elapsed:0)*this.timeScale;
+    // These are analytic display orbits, not a force integrator. Evaluate one
+    // swept, constrained pose at the current time instead of rebuilding the
+    // same large scene for every missed 1/30 tick. Logical angular time and
+    // real-time transfer distance advance by the complete elapsed interval.
+    if(this.coreId&&this.nodes.length>=2000&&this.accumulator>0){
+      const scale=this.accumulator*30;this.accumulator=0;this.motionStepScale=scale;
+      try{this.step();}finally{this.motionStepScale=1;}return true;
+    }
     let changed = false;
     while (this.accumulator >= 1 / 30-1e-10) {
       this.step();
@@ -425,7 +437,7 @@ export class AffinityLayout {
   step({ floating = true } = {}) {
     const count = this.nodes.length;
     if (!count) return;
-    if(floating&&this.coreId){this.stepGravity();this.time+=1/30;this.steps++;return;}
+    if(floating&&this.coreId){const scale=this.motionStepScale||1;this.stepGravity();this.time+=scale/30;this.steps+=scale;return;}
     const forces = new Float64Array(count * 3);
     const index = new Map(this.nodes.map((n, i) => [n.id, i]));
     const positions = this.nodes.map((n) => this.positions[n.id]);
@@ -590,7 +602,7 @@ export class AffinityLayout {
   stepGravity(){
     // Display choreography only: no force integration, impulses or escape velocities.
     const stars=[...this.starIds].map(id=>this.nodeIndices.get(id));
-    if(this.centerTarget){let remaining=0;this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*.01;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
+    if(this.centerTarget){let remaining=0;const alpha=1-Math.pow(.99,this.motionStepScale||1);this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*alpha;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
     const center=this.center||[0,this.eclipticY,0];
     if(stars.length>1){
       const radius=this.centralOrbitRadius;
@@ -601,30 +613,34 @@ export class AffinityLayout {
       const mean=[0,1,2].map(a=>stars.reduce((sum,i,k)=>sum+offsets[k][a]*this.masses[i],0)/mass);
       stars.forEach((i,k)=>{const id=this.nodes[i].id;this.positions[id]=center.map((v,a)=>v+offsets[k][a]-mean[a]);this.velocities[id]=[0,0,0];});
     }else if(this.coreId){this.positions[this.coreId]=[...center];this.velocities[this.coreId]=[0,0,0];}
-    this.lockPlanetOrbits();
-    for(const n of this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
+    const profileStart=performance.now();this.lockPlanetOrbits();const orbitEnd=performance.now();
+    for(const n of this.freeNodes||this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
       const o=this.freeOrbits.get(n.id),a=o.phase+this.steps*.0007,r=o.radius;
       const frame=o.frame,goal=center.map((x,k)=>x+(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a))*r),old=this.positions[n.id];
       if(this.freeTransitions?.has(n.id)){const delta=goal.map((x,k)=>x-old[k]),distance=Math.hypot(...delta),limit=Math.max(.01,Math.hypot(...old.map((x,k)=>x-center[k]))*.02);this.positions[n.id]=old.map((x,k)=>x+delta[k]*Math.min(1,limit/(distance||1)));if(distance<=limit)this.freeTransitions.delete(n.id);}else this.positions[n.id]=goal;
       this.velocities[n.id]=this.positions[n.id].map((x,k)=>x-old[k]);
     }
     // Transfer cruise uses wall-clock time; ordinary orbit clocks keep their scale.
-    advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9));
-    resolveBodyAvoidance(this);
+    const tourStart=performance.now();advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9)*(this.motionStepScale||1));
+    const avoidStart=performance.now();resolveBodyAvoidance(this);
+    this.stepCosts={orbits:orbitEnd-profileStart,tours:avoidStart-tourStart,avoidance:performance.now()-avoidStart};
   }
   lockPlanetOrbits({advance=true}={}){
+    const stepScale=this.motionStepScale||1;
     if(advance)this.preparePlanetSpeeds();
-    const shifts=new Map(),boosts=new Map();
-    for(const n of this.orbitOrder){
-      const orbit=this.orbits[n.id];if(!orbit||orbit.kind==='star')continue;
-      const p=this.positions[n.id],v=this.velocities[n.id],oldP=[...p],oldV=[...v];
-      for(let a=0;a<3;a++){p[a]+=shifts.get(orbit.host)?.[a]||0;v[a]+=boosts.get(orbit.host)?.[a]||0;}
+    if(this.orbitHostSource!==this.orbits){this.orbitHostSource=this.orbits;this.orbitHostIds=new Set(Object.values(this.orbits).map(o=>o.host));this.orbitEvaluation=this.orbitOrder.filter(n=>this.orbits[n.id]&&this.orbits[n.id].kind!=='star').map(n=>({n,orbit:this.orbits[n.id],i:this.nodeIndices.get(n.id),host:this.nodeIndices.get(this.orbits[n.id].host),hasChildren:this.orbitHostIds.has(n.id)}));this.orbitWork={points:new Array(this.nodes.length),velocities:new Array(this.nodes.length),shifts:new Float64Array(this.nodes.length*3),boosts:new Float64Array(this.nodes.length*3)};}
+    const tidalCache=new Map();
+    const {points,velocities,shifts,boosts}=this.orbitWork;shifts.fill(0);boosts.fill(0);
+    for(let i=0;i<this.nodes.length;i++){points[i]=this.positions[this.nodes[i].id];velocities[i]=this.velocities[this.nodes[i].id];}
+    for(const entry of this.orbitEvaluation){
+      const {n,orbit,i,host,hasChildren}=entry,p=points[i],v=velocities[i],oldP=hasChildren||orbit.motion?[...p]:null,oldV=hasChildren?[...v]:null;
+      for(let a=0;a<3;a++){p[a]+=shifts[host*3+a];v[a]+=boosts[host*3+a];}
       {
-        const i=this.nodeIndices.get(n.id),host=this.nodeIndices.get(orbit.host),q=this.positions[orbit.host],u=this.velocities[orbit.host];
+        const q=points[host],u=velocities[host];
         let baseRadius=Math.max(orbit.targetRadius,this.bodyMinimum(i,host));
-        if(orbit.motion){const m=orbit.motion,limit=Math.max(.01,m.radius*.015),delta=baseRadius-m.radius;
-          if(advance){m.radius+=Math.max(-limit,Math.min(limit,delta));m.drift=Math.max(0,m.drift-.006);
-            const unit=v=>{const len=Math.hypot(...v)||1;return v.map(x=>x/len);},u=unit(m.frame.u.map((x,k)=>x+(orbit.frame.u[k]-x)*.01)),raw=m.frame.v.map((x,k)=>x+(orbit.frame.v[k]-x)*.01),dot=raw.reduce((sum,x,k)=>sum+x*u[k],0),v=unit(raw.map((x,k)=>x-dot*u[k]));
+        if(orbit.motion){const m=orbit.motion,limit=Math.max(.01,m.radius*.015)*stepScale,delta=baseRadius-m.radius;
+          if(advance){m.radius+=Math.max(-limit,Math.min(limit,delta));m.drift=Math.max(0,m.drift-.006*stepScale);
+            const alpha=1-Math.pow(.99,stepScale),unit=v=>{const len=Math.hypot(...v)||1;return v.map(x=>x/len);},u=unit(m.frame.u.map((x,k)=>x+(orbit.frame.u[k]-x)*alpha)),raw=m.frame.v.map((x,k)=>x+(orbit.frame.v[k]-x)*alpha),dot=raw.reduce((sum,x,k)=>sum+x*u[k],0),v=unit(raw.map((x,k)=>x-dot*u[k]));
             m.frame={u,v,normal:[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]};
           }
           baseRadius=Math.max(m.radius,this.orbitalClearance(i,host));
@@ -632,41 +648,43 @@ export class AffinityLayout {
         const initialPhase=orbit.phase??Math.atan2(p[2]-q[2],p[0]-q[0]);
         // Each planet owns a continuous clock; close followers yield without stopping.
         // Visual orbit periods stay observable even after clearance enlarges a ring.
-        const omega=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08);
+        const omegaBase=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):(orbit.baseOmega??=(orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08))),omega=omegaBase*stepScale;
         // Persistent clocks survive sync(): background imports must not reset
         // any descendant's revolution. Co-orbiting bodies share a phase clock.
-        const clockKey=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
-        let clock=this.orbitClocks.get(clockKey);
+        const clockKey=orbit.clockKey??=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
+        let clock=orbit.clockReference||this.orbitClocks.get(clockKey);
         if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(clockKey,clock);}
+        orbit.clockReference=clock;
         if(advance&&clock.lastStep!==this.steps){clock.angle-=omega;clock.lastStep=this.steps;}
-        orbit.angularVelocity=omega;orbit.lockAngle=initialPhase+clock.angle+(orbit.motion?.drift||0);
+        orbit.angularVelocity=omegaBase;orbit.lockAngle=initialPhase+clock.angle+(orbit.motion?.drift||0);
         // Only local satellites receive a bounded, differential tidal response.
         const parentOrbit=this.orbits[orbit.host],ancestor=parentOrbit&&this.nodeIndices.get(parentOrbit.host);
         let perturbation=0;
         if(orbit.kind!=='planet'&&ancestor!==undefined){
-          const remote=this.positions[parentOrbit.host],d=Math.hypot(...remote.map((x,a)=>x-q[a]));
-          const tide=this.masses[ancestor]/this.masses[host]*(baseRadius/Math.max(d,baseRadius))**3;
-          const delta=remote.map((x,a)=>x-q[a]),project=axis=>delta.reduce((sum,x,a)=>sum+x*axis[a],0);
-          const amplitude=Math.min(.02,Math.max(0,tide)*.1),direction=Math.atan2(project(orbit.frame.v),project(orbit.frame.u));
+          let byFrame=tidalCache.get(orbit.host);if(!byFrame){byFrame=new Map();tidalCache.set(orbit.host,byFrame);}
+          let tidal=byFrame.get(orbit.frame);
+          if(!tidal){const remote=this.positions[parentOrbit.host],dx=remote[0]-q[0],dy=remote[1]-q[1],dz=remote[2]-q[2],project=axis=>dx*axis[0]+dy*axis[1]+dz*axis[2];tidal={distance:Math.hypot(dx,dy,dz),ratio:this.masses[ancestor]/this.masses[host],direction:Math.atan2(project(orbit.frame.v),project(orbit.frame.u))};byFrame.set(orbit.frame,tidal);}
+          const tide=tidal.ratio*(baseRadius/Math.max(tidal.distance,baseRadius))**3;
+          const amplitude=Math.min(.02,Math.max(0,tide)*.1),direction=tidal.direction;
           perturbation=amplitude*Math.cos(2*(orbit.lockAngle-direction));
         }
         const radius=Math.max(this.bodyMinimum(i,host),baseRadius*(1+perturbation));
         orbit.radialPerturbation=perturbation;
         const c=Math.cos(orbit.lockAngle),s=Math.sin(orbit.lockAngle);
         const frame=orbit.motion?.frame||orbit.frame;
-        let next=q.map((x,a)=>x+(frame.u[a]*c+frame.v[a]*s)*radius);
-        if(orbit.motion)next=this.steerPlanetTransition(n.id,orbit,oldP,next,q);
-        for(let a=0;a<3;a++){p[a]=next[a];v[a]=orbit.motion?p[a]-oldP[a]:u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
+        let next;if(orbit.motion)next=this.steerPlanetTransition(n.id,orbit,oldP,q.map((x,a)=>x+(frame.u[a]*c+frame.v[a]*s)*radius),q);
+        for(let a=0;a<3;a++){p[a]=next?next[a]:q[a]+(frame.u[a]*c+frame.v[a]*s)*radius;v[a]=orbit.motion?p[a]-oldP[a]:u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
         if(orbit.motion&&orbit.motion.drift===0&&Math.abs(orbit.motion.radius-orbit.targetRadius)<1e-7&&['u','v'].every(key=>orbit.motion.frame[key].every((x,k)=>Math.abs(x-orbit.frame[key][k])<1e-7)))delete orbit.motion;
       }
-      shifts.set(n.id,p.map((x,a)=>x-oldP[a]));boosts.set(n.id,v.map((x,a)=>x-oldV[a]));
+      if(hasChildren)for(let a=0;a<3;a++){shifts[i*3+a]=p[a]-oldP[a];boosts[i*3+a]=v[a]-oldV[a];}
     }
   }
 
   preferredPlanetSpeed(id,orbit){return .003/(1+(orbit.ring||0)*.14)*(.85+.3*phaseOf('planet-period:'+id)/(Math.PI*2));}
   preparePlanetSpeeds(){
     const groups=new Map(),speeds=new Map();
-    for(const n of this.nodes){const orbit=this.orbits[n.id];if(orbit?.kind!=='planet')continue;
+    if(this.planetSpeedSource!==this.orbits){this.planetSpeedSource=this.orbits;this.planetSpeedNodes=this.nodes.filter(n=>this.orbits[n.id]?.kind==='planet');}
+    for(const n of this.planetSpeedNodes){const orbit=this.orbits[n.id];
       const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClocks.get(key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
       if(!clock){clock={angle:0,lastStep:-1,omega:preferred};this.orbitClocks.set(key,clock);}
       const speed=(clock.omega??preferred)+(preferred-(clock.omega??preferred))*.04;speeds.set(n.id,speed);orbit.preferredAngularVelocity=preferred;
@@ -685,7 +703,7 @@ export class AffinityLayout {
         speeds.set(follower.id,Math.min(speeds.get(follower.id),maximum));
       }
     }
-    for(const n of this.nodes){const o=this.orbits[n.id];if(o?.kind==='planet')this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
+    for(const n of this.planetSpeedNodes){const o=this.orbits[n.id];this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
     this.planetStepSpeeds=speeds;
   }
 

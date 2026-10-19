@@ -21,6 +21,6 @@ with zipfile.ZipFile(out / ('Venus-' + version + '-source.zip'), 'w', zipfile.ZI
         archive.write(root / name, 'Venus-' + version + '/' + name)
 with zipfile.ZipFile(out / 'Venus-English-Screenshots.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
     for name in names:
-        if name.startswith('docs/images/') and name.endswith('.jpg'):
+        if name.startswith('docs/images/') and Path(name).name[:2].isdigit() and name.endswith(('.jpg', '.png')):
             archive.write(root / name, Path(name).name)
 print(json.dumps({'version': version, 'files': len(names), 'assets': sorted(p.name for p in out.glob('*.zip'))}))

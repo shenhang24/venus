@@ -394,8 +394,9 @@ export class Store {
       if(existing&&this.state.manualEdits?.[existing.id]&&(input.body!==existing.body||input.title!==existing.title))fail('人工编辑概念须通过编辑器修订，自动整合不能覆盖',409);
       const ref=input.conceptReferences?.at(-1),source=this.nodeById.get(ref?.sourceId),range=ref?.readRange;
       if(!source||source.kind!=='vault'||ref.sourceHash!==source.hash||!range||!Number.isInteger(range.start)||!Number.isInteger(range.end)||range.start<0||range.end>source.body.length||range.start>range.end)fail('概念须保留原文内的用户认可及结论依据');
-      const accepted=conceptAdmission({admission:ref.admission},{start:range.start,end:range.end,text:source.body.slice(range.start,range.end)},{source,priorEvidence:ref.discussion||[]});
+      const accepted=conceptAdmission({admission:ref.admission},{start:range.start,end:range.end,text:source.body.slice(range.start,range.end)},{source,priorEvidence:ref.discussion||[],historical:ref.historicalRecognition===true});
       if(!accepted.accepted)fail('概念未满足用户认可准入：'+accepted.reason);
+      ref.recognitionMethod=accepted.recognitionMethod||'explicit';ref.executionAuthorization=false;
       ref.discussion=[...accepted.evidence,...(ref.discussion||[])].filter((d,i,all)=>all.findIndex(x=>x.role===d.role&&x.start===d.start&&x.end===d.end)===i);
     }
     if (

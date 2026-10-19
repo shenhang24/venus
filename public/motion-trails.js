@@ -1,6 +1,6 @@
 // Render-only distance-sampled histories; no writes to layout or knowledge data.
 export class MotionTrails {
- constructor({samples=8,uploadMs=1000/30,stopFadeMs=1500}={}){this.samples=samples;this.uploadMs=uploadMs;this.stopFadeMs=stopFadeMs;this.ids=[];this.lastUpload=-Infinity;}
+ constructor({samples=8,uploadMs=1000/30,stopFadeMs=1500,sampleSpacing=1.05}={}){this.samples=samples;this.uploadMs=uploadMs;this.stopFadeMs=stopFadeMs;this.sampleSpacing=sampleSpacing;this.ids=[];this.lastUpload=-Infinity;}
  sync(nodes,radii,colorFor){
   const same=nodes.length===this.ids.length&&nodes.every((n,i)=>n.id===this.ids[i]);
   if(!same){const old=this.ids.length?{index:new Map(this.ids.map((id,i)=>[id,i])),history:this.history,times:this.times,counts:this.counts,heads:this.heads,lastPosition:this.lastPosition,lastMovement:this.lastMovement}:null;this.ids=nodes.map(n=>n.id);const n=nodes.length,s=this.samples;this.history=new Float64Array(n*s*3);this.times=new Float64Array(n*s);this.counts=new Uint8Array(n);this.heads=new Uint8Array(n);this.lastPosition=new Float64Array(n*3);this.lastMovement=new Float64Array(n);this.positions=new Float32Array(n*s*6);this.colors=new Float32Array(n*s*8);this.widths=new Float32Array(n*s);this.distances=new Float32Array(n*s*2);
@@ -17,7 +17,7 @@ export class MotionTrails {
    if(movement>1e-9){if(now-this.lastMovement[i]>=this.stopFadeMs)count=0;this.lastMovement[i]=now;}
    this.lastPosition[previous]=p[0];this.lastPosition[previous+1]=p[1];this.lastPosition[previous+2]=p[2];
    const k0=(base+head)*3;
-   if(!count||Math.hypot(p[0]-this.history[k0],p[1]-this.history[k0+1],p[2]-this.history[k0+2])>=r*1.05){head=count?(head+1)%slots:0;this.heads[i]=head;this.counts[i]=count=Math.min(slots,count+1);const k=(base+head)*3;this.history[k]=p[0];this.history[k+1]=p[1];this.history[k+2]=p[2];this.times[base+head]=now;if(count===1)this.lastMovement[i]=now;}
+   if(!count||Math.hypot(p[0]-this.history[k0],p[1]-this.history[k0+1],p[2]-this.history[k0+2])>=r*this.sampleSpacing){head=count?(head+1)%slots:0;this.heads[i]=head;this.counts[i]=count=Math.min(slots,count+1);const k=(base+head)*3;this.history[k]=p[0];this.history[k+1]=p[1];this.history[k+2]=p[2];this.times[base+head]=now;if(count===1)this.lastMovement[i]=now;}
    const stoppedFade=Math.max(0,1-(now-this.lastMovement[i])/this.stopFadeMs);if(!stoppedFade)continue;
    let ax=p[0],ay=p[1],az=p[2],travel=0;const maximum=r*8;
    for(let segment=0;segment<count;segment++){

@@ -99,8 +99,14 @@
           >
             <path d="M12 5v14M5 12h14" />
           </svg></button
-        ><span class="ribbon-spacer"></span
-        ><button
+        ><span class="ribbon-spacer"></span>
+        <div class="ai-ribbon-entries" role="group" aria-label="AI 连接入口">
+          <button type="button" data-ai-entry="gpt" title="GPT" aria-label="GPT"><span class="ai-ribbon-mark" aria-hidden="true">GPT</span></button>
+          <button type="button" data-ai-entry="claude" title="Claude" aria-label="Claude"><span class="ai-ribbon-mark" aria-hidden="true">C</span></button>
+          <button type="button" data-ai-entry="gemini" title="Gemini" aria-label="Gemini"><span class="ai-ribbon-mark" aria-hidden="true">✦</span></button>
+          <button type="button" data-ai-entry="local" title="本地 AI" aria-label="本地 AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/></svg></button>
+        </div>
+        <button
           id="ribbon-jobs"
           aria-label="资料处理进度"
           title="资料处理进度"
@@ -136,6 +142,7 @@
             <span>⌘</span> AI 技能 <span id="skill-count" class="count">0</span>
           </button>
           <button class="side-link" data-view="concept"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1 2-1 4H9c0-2 0-3-1-4Z"/></svg></span> 概念云 <span id="concept-count" class="count">0</span></button>
+          <button class="side-link" data-view="journal"><span aria-hidden="true">≡</span> 日志 / 更新日志</button>
           <div id="files-host"></div>
         </div>
         <div class="network-navigation">

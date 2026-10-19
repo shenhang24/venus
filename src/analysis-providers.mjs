@@ -1,5 +1,7 @@
 import fs from 'node:fs';import path from 'node:path';
 import {analysisSchema,analysisInstructions,createModelRunner} from './analysis-model.mjs';
+import {UsageRequest} from './usage-meter.mjs';
+import {currentMaterialInput} from './current-material.mjs';
 
 const adapters=new Map();
 export function registerAnalysisAdapter(name,factory){if(!/^[a-z][a-z0-9-]*$/.test(name)||typeof factory!=='function')throw Error('无效适配器');adapters.set(name,factory);}
@@ -36,12 +38,12 @@ export function budgetPayload(payload,config){
   // never sliced here: the scheduler processes every character in saved chunks.
   return {...payload,existingCandidates:(payload.existingCandidates||[]).slice(0,config.candidateLimit).map(c=>({...c,excerpt:c.excerpt.slice(0,config.candidateExcerptCharacters)})),mainTagCandidates:(payload.mainTagCandidates||[]).slice(0,config.mainTagCandidateLimit)};
 }
-export function createAnalysisProvider(meta,{fetchImpl=fetch,environment=process.env,codexFactory=createModelRunner}={}){
-  const config=readProviderConfig(meta),description=describeProvider(config,environment);let codex;
+export function createAnalysisProvider(meta,{fetchImpl=fetch,environment=process.env,codexFactory=createModelRunner,config:requestedConfig,usageFamily}={}){
+  const config=requestedConfig?providerConfig(requestedConfig):readProviderConfig(meta),description=describeProvider(config,environment);let codex;
   const runner=async(payload,{signal}={})=>{
-    if(config.provider==='codex'){codex||=codexFactory(path.join(meta,'analysis-runtime'),config);return codex(payload,{signal});}
+    if(config.provider==='codex'){codex||=codexFactory(path.join(meta,'analysis-runtime'),{...config,usageMeta:meta,usageFamily});return codex(payload,{signal});}
     if(!description.configured)throw Error(description.status+'；未发送资料，不会切换到云端备用服务');
-    const selected=budgetPayload(payload,config),prompt=analysisInstructions+JSON.stringify(selected);
+    const selected=budgetPayload(currentMaterialInput(payload),config),prompt=analysisInstructions+JSON.stringify(selected);
     if(prompt.length+JSON.stringify(analysisSchema).length>config.maxInputCharacters)throw Error('输入字符预算不足；原文未截断、尚未发送，请调整明确的分段或上下文预算');
     if(adapters.has(config.provider)){const result=await adapters.get(config.provider)({config,schema:analysisSchema,instructions:analysisInstructions,environment})(selected,{signal});contract(analysisSchema,result);return result;}
     const headers={'Content-Type':'application/json'},key=config.keyEnv?environment[config.keyEnv]:null;
@@ -57,9 +59,11 @@ export function createAnalysisProvider(meta,{fetchImpl=fetch,environment=process
       if(config.format==='json')body.messages[0].content+='\nJSON Schema: '+JSON.stringify(analysisSchema);
     }
     const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(12*60*1000)]):AbortSignal.timeout(12*60*1000);
-    let response;try{response=await fetchImpl(endpoint,{method:'POST',headers,body:JSON.stringify(body),redirect:'error',signal:requestSignal});}catch{if(signal?.aborted)throw Error('ANALYSIS_CANCELLED');throw Error('模型服务连接失败或超时；未尝试其他提供方');}
+    const usage=new UsageRequest(meta,{provider:config.provider,model:config.model,family:usageFamily});
+    let response;try{response=await fetchImpl(endpoint,{method:'POST',headers,body:JSON.stringify(body),redirect:'error',signal:requestSignal});}catch{usage.finish(null,config.provider,{status:signal?.aborted?'cancelled':'failed'});if(signal?.aborted)throw Error('ANALYSIS_CANCELLED');throw Error('模型服务连接失败或超时；未尝试其他提供方');}
+    let data;try{data=await response.json();}catch{usage.finish(null,config.provider,{status:'failed'});throw Error('模型服务未返回有效 JSON');}
+    usage.finish(data.usage,config.provider,{providerRequestId:data.id||response.headers?.get?.('x-request-id'),model:data.model,status:response.ok?'completed':'failed'});
     if(!response.ok)throw Error('模型服务 HTTP '+response.status+'；未切换其他提供方');
-    let data;try{data=await response.json();}catch{throw Error('模型服务未返回有效 JSON');}
     const text=config.provider==='gemini'?(data.output_text||data.outputs?.filter(o=>o.type==='text').map(o=>o.text||'').join('')):data.choices?.[0]?.message?.content;
     let result;try{result=typeof text==='string'?JSON.parse(text):null;}catch{throw Error('模型输出不是有效 JSON；断点保留');}
     contract(analysisSchema,result);return result;

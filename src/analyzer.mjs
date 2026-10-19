@@ -25,7 +25,7 @@ export function nextChunk(body,offset,size=40000){
 export function remainingChunkCount(body,offset,size){
   let count=0;while(offset<body.length){offset=nextChunk(body,offset,size).end;count++;}return count;
 }
-function rankCandidates(nodes,text,kind){
+export function rankCandidates(nodes,text,kind){
   const sample=text.toLowerCase();
   return nodes.filter(n=>n.kind===kind&&!n.mergedInto).map(n=>{
     const terms=(n.title+' '+(n.categories||[]).join(' ')).toLowerCase().match(/[a-z0-9]{3,}|[\u4e00-\u9fff]{2,}/g)||[];
@@ -141,20 +141,21 @@ export class AutoAnalyzer {
   async tick(){
     for(const file of this.active.values())
       if(this.store.state.jobs.find(j=>j.sourceId===file.sourceId)?.status==='paused')file.controller.abort();
-    if(this.active.size>=this.maxConcurrent)return;
+    const occupied=(this.store.layerPipeline?.active.size||0)+(this.store.layerPipeline?.externalSlots()||0);
+    if(this.active.size+occupied>=this.maxConcurrent)return;
     if(this.stopped||!this.state.enabled||this.clock()<(this.state.cooldownUntil||0))return;
     this.discover();
     this.conceptExtractor?.initializeBatch();
     const available=Object.values(this.state.entries).filter(e=>
-      !this.active.has(e.sourceId)&&!['done','review'].includes(e.status)&&
+      !this.active.has(e.sourceId)&&!this.store.layerPipeline?.activeSources().has(e.sourceId)&&!['done','review'].includes(e.status)&&
       this.store.nodes.some(n=>n.id===e.sourceId&&!n.mergedInto)&&
       this.store.state.jobs.find(j=>j.sourceId===e.sourceId)?.status!=='paused');
     // Dispatch in persisted import order. Each file has at most one active segment.
     const order=new Map(this.store.state.jobs.map((job,index)=>[job.sourceId,index]));
     available.sort((a,b)=>(order.get(a.sourceId)??Infinity)-(order.get(b.sourceId)??Infinity));
     if(this.maxConcurrent===1&&available[0]?.retryAt>this.clock())return;
-    const historical=this.conceptExtractor?.batchComplete()&&!([...this.active.values()].some(f=>f.taskKind==='concept-only'))&&this.conceptExtractor.nextHistorical(this.clock())&&(this.maxConcurrent>1||!available.length||this.conceptBackfillTurn!==false);
-    const free=this.maxConcurrent-this.active.size;
+    const historical=!this.store.layerPipeline?.externalSlots()&&this.conceptExtractor?.batchComplete()&&!([...this.active.values()].some(f=>f.taskKind==='concept-only'))&&this.conceptExtractor.nextHistorical(this.clock())&&(this.maxConcurrent>1||!available.length||this.conceptBackfillTurn!==false);
+    const free=this.maxConcurrent-this.active.size-occupied;
     const ready=available.filter(entry=>entry.retryAt<=this.clock()).slice(0,free-(historical?1:0));
     if(historical){this.conceptBackfillTurn=false;await Promise.all([this.processConceptBackfill(),...ready.map(entry=>this.processEntry(entry))]);return;}
     if(this.enableMainTagBackfill&&!ready.length&&this.store.nodes.some(n=>n.kind!=='concept'&&!n.mergedInto&&!this.tagsReviewed(n)&&!this.tagReservations.has(n.id)))return this.processMainTagBatch();
@@ -170,10 +171,12 @@ export class AutoAnalyzer {
     const artifact=path.join(this.directory,'concept-'+hash(source.id+'|'+source.hash+'|'+part.start+'|'+part.end)+'.json');
     try{
       const cached=pending&&pending.start===part.start&&pending.end===part.end?path.join(this.directory,path.basename(pending.artifact)):artifact;
-      const result=fs.existsSync(cached)?JSON.parse(fs.readFileSync(cached,'utf8')):await this.runner({purpose:'concept-only',conceptsEnabled:true,source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},existingConcepts:this.conceptExtractor.context(source,part.text),knownConceptDiscussion:this.conceptExtractor.knownDiscussion(source),existingCandidates:[],mainTagCandidates:[],relationshipTypes:[]},{signal:controller.signal});
+      const failure=this.conceptExtractor.state.failures?.[key];
+      const result=fs.existsSync(cached)&&!failure?JSON.parse(fs.readFileSync(cached,'utf8')):await this.runner({purpose:'concept-only',conceptsEnabled:true,historicalRecognition:true,source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},existingConcepts:this.conceptExtractor.context(source,part.text),knownConceptDiscussion:this.conceptExtractor.knownDiscussion(source),existingCandidates:[],mainTagCandidates:[],relationshipTypes:[],validationFeedback:failure?.error||pending?.error||''},{signal:controller.signal});
       if(this.stopped||!this.state.enabled||controller.signal.aborted)throw Error('ANALYSIS_CANCELLED');
       if(this.store.find(source.id).hash!==source.hash)throw Error('SOURCE_CHANGED');
-      atomic(artifact,result);this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[]);
+      if(fs.existsSync(artifact))fs.copyFileSync(artifact,artifact+'.previous-'+this.clock());
+      atomic(artifact,result);this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[],{historical:true});
     }catch(error){if(error.message!=='ANALYSIS_CANCELLED'){this.conceptExtractor.failHistorical(key,error,this.clock());if(/rate.?limit|usage.?limit|quota|\b429\b/i.test(error.message))this.state.cooldownUntil=this.clock()+30*60*1000;}}
     finally{this.active.delete(activeKey);this.running=this.active.size>0;this.current=([...this.active.values()].map(({controller,...f})=>f))[0]||null;this.save();}
   }
@@ -197,8 +200,10 @@ export class AutoAnalyzer {
         if(!candidates.some(c=>c.id===n.id))candidates.push({id:n.id,title:n.title,kind:n.kind,excerpt:n.body.slice(0,1400),categories:n.categories||[]});
       }
       tagCandidates=this.reserveMainTagCandidates();
-      const payload={source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},
-        conceptsEnabled:!!this.conceptExtractor,existingConcepts:this.conceptExtractor?.context(source,part.text)||[],knownConceptDiscussion:this.conceptExtractor?.knownDiscussion(source)||[],
+      const knowledgeDone=this.store.layerPipeline?.progress(source,'knowledge').complete,skillDone=this.store.layerPipeline?.progress(source,'skill').complete,conceptDone=this.store.layerPipeline?.progress(source,'concept').complete;
+      const purpose=knowledgeDone?(skillDone?'concept-only':'skill-only'):skillDone?'knowledge-only':undefined;
+      const payload={purpose,source:{id:source.id,title:source.title,hash:source.hash,offset:part.start,total:source.body.length,text:part.text},
+        conceptsEnabled:!!this.conceptExtractor&&!conceptDone,existingConcepts:this.conceptExtractor?.context(source,part.text)||[],knownConceptDiscussion:this.conceptExtractor?.knownDiscussion(source)||[],
         mainTagCandidates:tagCandidates,mainTagRegistry:[...new Set(this.store.nodes.flatMap(n=>(n.mainTags||[]).map(t=>t.name)))],relationshipTypes:this.store.state.types,
         continuationContext:{coveredUntil:entry.offset,previousSegments:entry.parts.slice(-3).map(p=>({start:p.start,end:p.end,summary:p.summary})),
           savedKnowledgeIds:priorKnowledge.map(n=>n.id)},
@@ -210,6 +215,7 @@ export class AutoAnalyzer {
         result=await this.runner(payload,{signal:controller.signal});
       }
       this.prepareLocators(result,part,candidates,tagCandidates);
+      if(knowledgeDone&&result.knowledge?.length||skillDone&&result.skills?.length||conceptDone&&result.concepts?.length)throw Error('已完成层返回重复提取结果，未覆盖已有成果');
       this.validate(result,part.text,candidates);
       const readBefore={...this.store.readStats};
       this.checkActive(entry);atomic(artifact,result);

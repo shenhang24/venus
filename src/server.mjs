@@ -10,6 +10,13 @@ import {createAnalysisProvider,readProviderConfig,saveProviderConfig,describePro
 import {createReadQuery} from './readonly-query.mjs';
 import {proxyTunnelControl} from './tunnel-control-proxy.mjs';
 import {ConceptExtractor,conceptTemplate} from './concepts.mjs';
+import {LayerPipeline} from './layer-pipeline.mjs';
+import {AIConnections} from './ai-connections.mjs';
+import {ExecutionJournal,errorCode} from './execution-journal.mjs';
+import {ReviewControl} from './review-control.mjs';
+import {ConceptRecheck} from './concept-recheck.mjs';
+import {readUsageSummary} from './usage-meter.mjs';
+import {projectGroups,projectScopesFor,nodeTagHierarchy} from '../public/taxonomy.js';
 export const project = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -18,6 +25,10 @@ export function createApp({
   root = path.join(project, "data"),
   port = 10001,
   onLifecycle = null,
+  analysisRunner = null,
+  connectionOptions = {},
+  displayLanguageOverride = null,
+  reviewLauncher = null,
   enableAnalysis = false,
   tunnelControlTransport = proxyTunnelControl,
 } = {}) {
@@ -27,10 +38,16 @@ export function createApp({
   const provider=createAnalysisProvider(store.meta);
   const readonlyQuery=createReadQuery(store);
   const concepts=new ConceptExtractor(store);
-  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner:provider.runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true,conceptExtractor:concepts}):null;
-  const systemDisplayLanguage=readWindowsDisplayLanguage();
+  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner:analysisRunner||provider.runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true,conceptExtractor:concepts}):null;
+  const connections=new AIConnections(store.meta,{active:provider.description,...connectionOptions});
+  const journal=new ExecutionJournal(store.meta,path.resolve(store.root,'../work'));
+  const layers=analyzer?new LayerPipeline(store,{analyzer,concepts,query:readonlyQuery,runner:analysisRunner||provider.runner,connectionRunner:family=>connections.runnerFor(family),eventSink:event=>journal.append(event)}):null;
+  const reviewControl=new ReviewControl({project:path.resolve(store.root,'..'),meta:store.meta,journal,analysis:()=>analyzer?.status(),launcher:reviewLauncher});
+  const recheck=new ConceptRecheck(store,{journal,workerRunning:()=>!!reviewControl.worker()});
+  const systemDisplayLanguage=displayLanguageOverride||readWindowsDisplayLanguage();
   let revision = store.state.revision;
   const json = (res, data, status = 200) => {
+    if(res.venusAction){const a=res.venusAction;journal.append({kind:status>=400?'error':a.route.includes('control')?'recovery':'operation',action:a.route,status:status>=400?'failed':data.fastPassed||data.structuralPassed?'verified-skip':data.manualRequired?'not-started':data.skipped?'skipped':data.accepted||data.queued?'accepted':'saved',sourceId:a.sourceId,code:status>=400?errorCode(data.error):undefined,error:status>=400?{original:data.error,disposition:'request-failed'}:null});}
     res.writeHead(status, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
@@ -53,10 +70,23 @@ export function createApp({
       if (req.method === 'GET' && url.pathname === '/api/ui-language')
         return json(res,{systemDisplayLanguage,supported:['zh','en'],fallback:'en'});
       if(req.method==='GET'&&url.pathname==='/api/analysis-provider')return json(res,{saved:describeProvider(readProviderConfig(store.meta)),active:provider.description,activation:'next-backend-start',connectionTested:false});
+      if(req.method==='GET'&&url.pathname==='/api/layers/status'){if(!layers)return json(res,{error:'当前后台未加载独立处理器'},503);return json(res,layers.status(url.searchParams.get('sourceId')||undefined));}
+      if(req.method==='GET'&&url.pathname==='/api/ai-connections')return json(res,connections.summary());
+      if(req.method==='GET'&&url.pathname==='/api/token-usage')return json(res,readUsageSummary(store.meta,{profiles:[{provider:provider.config.provider,model:provider.config.model,family:({codex:'gpt',gemini:'gemini',local:'local'})[provider.config.provider]||provider.config.provider},...Object.entries(connections.saved()).map(([family,c])=>({family,provider:c.provider,model:c.model}))]}));
+      if(req.method==='GET'&&url.pathname==='/api/journal'){journal.syncReview();return json(res,journal.read(url.searchParams.get('day')||undefined,{limit:url.searchParams.get('limit'),before:url.searchParams.get('before')}));}
+      if(req.method==='GET'&&url.pathname==='/api/task-record')return json(res,{latest:journal.latestTask,lastFailure:journal.latestFailure||null,boundary:'Local record only; other tasks must read it. No cross-thread push is sent.'});
+      if(req.method==='GET'&&url.pathname==='/api/concept-review/status')return json(res,reviewControl.status());
+      if(req.method==='GET'&&url.pathname==='/api/concept-review/recheck'){const {plan}=recheck.inspect(url.searchParams.get('sourceId'));return json(res,{sourceId:plan.sourceId,ruleVersion:plan.ruleVersion,reasons:plan.reasons,fastPassed:plan.fastPassed,modelRequired:plan.modelRequired});}
       if(req.method==='GET'&&url.pathname==='/api/concepts/template')return json(res,{template:conceptTemplate,automatic:'existing-five-lane-analysis',startsModelCall:false,ruleVersion:2});
       if(req.method==='GET'&&url.pathname==='/api/concepts/questions')return json(res,{items:Object.values(concepts.state.ignoredQuestions||{}).filter(q=>q.status==='ignored'),ignorable:true,createsTasks:false});
-      if (req.method === "GET" && url.pathname === "/api/state")
-        return json(res, store.snapshot({summary:url.searchParams.get('summary') === '1',refresh:false}));
+      if (req.method === "GET" && url.pathname === "/api/state") {
+        const snapshot=store.snapshot({summary:url.searchParams.get('summary') === '1',refresh:false});
+        snapshot.projectGroups=projectGroups(snapshot.nodes,snapshot.jobs);const scopes=projectScopesFor(snapshot.nodes,snapshot.projectGroups);
+        snapshot.nodes=snapshot.nodes.map(n=>{const node={...n,projectScopes:scopes.get(n.id)||[]};return {...node,tagHierarchy:nodeTagHierarchy(node)};});
+        snapshot.independentLayers=layers?.activity()||null;
+        if(layers)snapshot.conceptContentReview=reviewControl.status();
+        return json(res,snapshot);
+      }
       if (req.method === "GET" && url.pathname === "/api/node")
         return json(res, store.find(url.searchParams.get('id')));
       if (req.method === "GET" && url.pathname === "/api/history")
@@ -105,12 +135,20 @@ export function createApp({
           res.once("finish", () => setTimeout(() => onLifecycle(data.action), 100));
           return json(res, { accepted: true, action: data.action });
         }
+        if(['/api/import','/api/edit','/api/upsert','/api/relation','/api/main-tags','/api/analysis','/api/layers/start','/api/layers/control','/api/concept-review/control','/api/concept-review/recheck'].includes(url.pathname))res.venusAction={route:url.pathname,sourceId:data.sourceId||data.id};
+        if(url.pathname==='/api/concept-review/recheck')return json(res,recheck.request(data));
+        if(url.pathname==='/api/concept-review/control')return json(res,await reviewControl.control(data));
+        if(url.pathname==='/api/layers/control')return json(res,layers.control(data));
         if(['/api/mcp-control/start','/api/mcp-control/stop'].includes(url.pathname)){
           const result=await tunnelControlTransport(url.pathname.split('/').at(-1),{method:'POST',data,token:String(req.headers['x-venus-token']||'')});
           delete data.key;for(const chunk of chunks)chunk.fill(0);
           return json(res,result.data,result.status);
         }
         if(url.pathname==='/api/concepts/plan')return json(res,concepts.plan(data));
+        if(url.pathname==='/api/concepts/retry')return json(res,concepts.retryFailed(data));
+        if(url.pathname==='/api/ai-connections/detect')return json(res,await connections.detect(data));
+        if(url.pathname==='/api/ai-connections/configure')return json(res,connections.configure(data));
+        if(url.pathname==='/api/layers/start'){if(!layers)return json(res,{error:'当前后台未加载独立处理器'},503);return json(res,layers.start(data));}
         const routes = {
           '/api/handoff/checkpoint':()=>store.checkpoint(data),
           '/api/read/aux-tags':()=>readonlyQuery.setAuxiliary(data),
@@ -145,6 +183,9 @@ export function createApp({
         "/knowledge-view.js": "public/knowledge-view.js",
         "/i18n.js": "public/i18n.js",
         "/graph.js": "public/graph.js",
+        "/animation-clock.js": "public/animation-clock.js",
+        "/layer-controls.js": "public/layer-controls.js",
+        "/taxonomy.js": "public/taxonomy.js",
         "/layout.js": "public/layout.js",
         "/style.css": "public/style.css",
         "/vendor/three.module.js": "node_modules/three/build/three.module.js",
@@ -190,11 +231,14 @@ export function createApp({
   timer.unref();
   app.on("close", () => {
     analyzer?.stop();
+    layers?.stop();
     clearInterval(timer);
     libraryRefresh.close();
     for (const c of clients) c.end();
   });
   if(analyzer)app.once('listening',()=>analyzer.start());
+  app.once('listening',()=>journal.append({kind:'service',action:'SERVICE_LOADED',status:'ready',code:'local-service-loaded'}));
+  if(layers)app.once('listening',()=>layers.run());
   return { app, store };
 }
 if (

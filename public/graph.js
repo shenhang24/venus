@@ -57,9 +57,14 @@ export function createExteriorTransfer({start,velocity,center,frame,radius,angle
 }
 export function exteriorTransferPoint(route,elapsed,destination,destinationVelocity){
   const {center,frame,radius,phase,duration,lapDuration}=route,omega=Math.PI*2/lapDuration;
-  const circle=a=>center.map((x,k)=>x+radius*(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a)));
-  const tangent=a=>frame.u.map((x,k)=>radius*omega*(-x*Math.sin(a)+frame.v[k]*Math.cos(a)));
-  if(elapsed<=duration)return transferHermite(route.start,route.velocity,circle(phase),tangent(phase),elapsed/duration,duration);
+  const circle=a=>{const c=Math.cos(a),s=Math.sin(a);return center.map((x,k)=>x+radius*(frame.u[k]*c+frame.v[k]*s));};
+  const tangent=a=>{const c=Math.cos(a),s=Math.sin(a);return frame.u.map((x,k)=>radius*omega*(-x*s+frame.v[k]*c));};
+  if(elapsed<=duration){
+    // The entrance curve is static for the entire transit. Cache its cubic
+    // coefficients instead of rebuilding endpoint vectors for every query.
+    if(!route.entryPolynomial){const end=circle(phase),velocity=tangent(phase);route.entryPolynomial=route.start.map((x,k)=>[2*x+duration*route.velocity[k]-2*end[k]+duration*velocity[k],-3*x-2*duration*route.velocity[k]+3*end[k]-duration*velocity[k],duration*route.velocity[k],x]);}
+    const t=elapsed/duration;return route.entryPolynomial.map(p=>((p[0]*t+p[1])*t+p[2])*t+p[3]);
+  }
   if(elapsed<=duration+lapDuration)return circle(phase+omega*(elapsed-duration));
   const local=Math.min(duration,elapsed-duration-lapDuration),remaining=duration-local;
   // Predict the moving docking endpoint, rather than chasing its old position.
@@ -69,7 +74,7 @@ export function exteriorTransferPoint(route,elapsed,destination,destinationVeloc
 // Cruise is measured in world units per second, never radians or radius-scaled steps.
 export const TRANSFER_LINEAR_SPEED=6;
 export function advanceTransferDistance(route,start,deltaSeconds,sample,{speed=TRANSFER_LINEAR_SPEED,blendEntry=true}={}){
-  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  const dt=Math.max(0,Number.isFinite(deltaSeconds)?deltaSeconds:0);
   route.motionSeconds||=0;
   const t=Math.min(1,(route.motionSeconds+dt*.5)/.5),ease=t*t*(3-2*t);
   route.sourceStepSeconds||=dt||1/30;
@@ -91,11 +96,15 @@ export function advanceTransferDistance(route,start,deltaSeconds,sample,{speed=T
       let lo=elapsed,hi=Math.min(end,elapsed+1),q=sample(hi),distance=length(minus(q,position));
       while(distance<remaining&&hi<end){hi=Math.min(end,elapsed+(hi-elapsed)*2);q=sample(hi);distance=length(minus(q,position));}
       if(distance<=remaining+1e-10){position=q;elapsed=hi;travelled+=distance;remaining=Math.max(0,remaining-distance);continue;}
-      for(let iteration=0;iteration<30;iteration++){
-        const middle=(lo+hi)/2,p=sample(middle);
-        if(length(minus(p,position))<remaining)lo=middle;else hi=middle;
+      // Distance slices are short and smooth: a bracketed secant normally
+      // resolves them in a few samples. Retain bisection as a safe fallback.
+      let lowDistance=drift,highDistance=distance,parameter=(lo+hi)/2,resolved=false;
+      for(let iteration=0;iteration<12;iteration++){
+        const fraction=(remaining-lowDistance)/(highDistance-lowDistance);parameter=lo+(hi-lo)*fraction;if(!(parameter>lo&&parameter<hi))parameter=(lo+hi)/2;
+        q=sample(parameter);const d=length(minus(q,position));if(Math.abs(d-remaining)<=1e-9){resolved=true;break;}if(d<remaining){lo=parameter;lowDistance=d;}else{hi=parameter;highDistance=d;}
       }
-      q=sample((lo+hi)/2);travelled+=length(minus(q,position));position=q;elapsed=(lo+hi)/2;remaining=0;
+      if(!resolved){for(let iteration=0;iteration<30;iteration++){parameter=(lo+hi)/2;q=sample(parameter);const d=length(minus(q,position));if(d<remaining)lo=parameter;else hi=parameter;}parameter=(lo+hi)/2;q=sample(parameter);}
+      travelled+=length(minus(q,position));position=q;elapsed=parameter;remaining=0;
     }
   }
   route.distanceTravelled=(route.distanceTravelled||0)+travelled;
@@ -108,7 +117,8 @@ function beginExteriorTransfer(layout,g,start,velocity){
   // Bounds are read only: animation channels never become satellite reach or packing envelopes.
   const extent=Math.max(...layout.sharedOrbits.map(group=>layout.systemExtents[group.index])),lane=layout.exteriorLaneRanks.get(g.id);
   const radius=bound+(lane+1)*(2*extent+TOUR_SURFACE_GAP)+extent;
-  return createExteriorTransfer({start,velocity,center,frame:g.visits[0].frame,radius,angle:g.tour.angle});
+  const scale=layout.motionStepScale||1,route=createExteriorTransfer({start,velocity:velocity.map(x=>x/scale),center,frame:g.visits[0].frame,radius,angle:g.tour.angle});
+  route.sourceStepSeconds=(1/30)/Math.max(layout.timeScale||1,1e-9);return route;
 }
 // The entire moving subtree must remain inside its owner's orbital territory.
 // A transfer is allowed only when that territory also contains the route.
@@ -205,7 +215,8 @@ class Occupancy{
 }
 
 export function advanceSharedTours(layout,deltaSeconds=1/30){
-  const dt=Math.max(0,Math.min(Number.isFinite(deltaSeconds)?deltaSeconds:0,0.1));
+  const dt=Math.max(0,Number.isFinite(deltaSeconds)?deltaSeconds:0);
+  const stepScale=layout.motionStepScale||1;
   // Per-frame choreography exemption, never a persistent collision setting.
   layout.transferPassThroughIds=new Set();
   if(!layout.sharedOrbits.length)return;
@@ -214,10 +225,9 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(active>=12)break;const s=g.tour;s.stage='approach';s.index=Math.max(0,g.visits.findIndex(v=>v.host===layout.orbits[g.id].host));s.orbitStartAngle=s.angle;s.progress=0;s.roundVisits=0;s.lastStarted=layout.tourDispatchCounter=(layout.tourDispatchCounter||0)+1;active++;
   }
   const moving=new Set(layout.sharedOrbits.flatMap(g=>g.memberIndices)),entries=[];
-  layout.tourObstaclePrevious||=new Map();
   for(let i=0;i<layout.nodes.length;i++)if(!moving.has(i)){
-    const id=layout.nodes[i].id,p=layout.positions[id],previous=layout.tourObstaclePrevious.get(id),margin=previous?length(minus(p,previous))*3:0;
-    entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});layout.tourObstaclePrevious.set(id,[...p]);
+    const id=layout.nodes[i].id,p=layout.positions[id];
+    entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});
   }
   for(const g of layout.sharedOrbits){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];if(s.stage!=='transfer')entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
   const occupancy=new Occupancy(entries);
@@ -233,12 +243,13 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(s.stage==='orbit'){
       let rate=.012;
       if(s.orbitJoin){const t=Math.min(1,(s.orbitJoin.elapsed+dt)/.5),ease=t*t*(3-2*t);rate=s.orbitJoin.rate+(.012-s.orbitJoin.rate)*ease;s.orbitJoin.elapsed+=dt;if(t===1)s.orbitJoin=null;}
-      nextAngle=s.angle+rate;goal=point(layout,visit,nextAngle);
+      nextAngle=s.angle+rate*stepScale;goal=point(layout,visit,nextAngle);
     }
     else if(s.stage==='transfer'){
       s.exterior||=beginExteriorTransfer(layout,g,start,s.worldVelocity||layout.velocities[g.id]||[0,0,0]);
       const route=s.exterior,destination=g.visits[(s.index+1)%g.visits.length],total=2*route.duration+route.lapDuration;
       const sample=parameter=>{
+        if(parameter<=route.duration+route.lapDuration)return exteriorTransferPoint(route,parameter,null,null);
         const angle=route.angle+parameter*.012,a=destination.phase+angle,b=point(layout,destination,angle);
         const velocity=destination.frame.u.map((x,k)=>(layout.velocities[destination.host]?.[k]||0)+destination.radius*.012*(-x*Math.sin(a)+destination.frame.v[k]*Math.cos(a)));
         return exteriorTransferPoint(route,parameter,b,velocity);
@@ -247,7 +258,7 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
       nextProgress=movement.elapsed;nextAngle=route.angle+nextProgress*.012;goal=movement.position;
     }else goal=s.stage==='home'?original:point(layout,visit,s.angle);
     const nextVisit=g.visits[(s.index+1)%g.visits.length],hostMotion=Math.max(length(layout.velocities[visit.host]||[0,0,0]),length(layout.velocities[nextVisit.host]||[0,0,0]));
-    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Infinity:Math.max(size*.2+hostMotion*2+visit.radius*.018,distance/8,.01);
+    const delta=minus(goal,start),distance=length(delta),maxStep=s.stage==='transfer'&&s.exterior?Infinity:Math.max(size*.2*stepScale+hostMotion*2+visit.radius*.018*stepScale,distance*(1-Math.pow(.875,stepScale)),.01*stepScale);
     const within=p=>s.stage==='transfer'||length(minus(p,layout.center||[0,0,0]))<=layout.tourWorldBound&&insideSatelliteTerritory(layout,g,p)&&(!['orbit','approach'].includes(s.stage)||length(minus(p,layout.positions[visit.host]))>=layout.orbitalClearance(g.index,layout.nodeIndices.get(visit.host))-1e-7);
     const angleAt=p=>{const d=minus(p,layout.positions[visit.host]);return Math.atan2(d.reduce((sum,x,k)=>sum+x*visit.frame.v[k],0),d.reduce((sum,x,k)=>sum+x*visit.frame.u[k],0));};
     const startAngle=angleAt(s.lastRenderedWorld&&s.lastRenderedHost===visit.host&&s.lastRenderedHostPosition?s.lastRenderedWorld.map((x,k)=>x+layout.positions[visit.host][k]-s.lastRenderedHostPosition[k]):start);
@@ -269,7 +280,7 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
     if(arrived&&!wasOrbit){
       if(s.stage==='approach'){s.stage='orbit';s.orbitStartAngle=s.angle;}
       else if(s.stage==='home'){s.stage='idle';s.world=null;}
-      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.orbitJoin={rate:Math.min(.012,length(s.worldVelocity)/(g.visits[s.index].radius||1)),elapsed:0};s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
+      else if(s.stage==='transfer'&&s.exterior){s.exterior.elapsed=nextProgress;s.angle=nextAngle;if(nextProgress>=2*s.exterior.duration+s.exterior.lapDuration){s.index=(s.index+1)%g.visits.length;s.stage='orbit';s.orbitStartAngle=s.angle;s.orbitJoin={rate:Math.min(.012,length(s.worldVelocity)/(g.visits[s.index].radius||1)/stepScale),elapsed:0};s.exterior=null;s.progress=0;s.hostPosition=[...layout.positions[g.visits[s.index].host]];}}
     }
     const shift=minus(candidate,original);
     for(const i of g.memberIndices){const id=layout.nodes[i].id;layout.positions[id]=layout.positions[id].map((x,k)=>x+shift[k]);}
@@ -277,67 +288,104 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
   }
 }
 
-const magnitude=v=>Math.hypot(...v);
-// Local display constraints only. No masses are integrated and no orbit is reassigned.
+// Local geometric display constraints only. No force integration or orbit changes.
+const avoidanceCaches=new WeakMap();
+function collisionCache(layout){
+  const {nodes,orbits,collisionRadii:radii}=layout,mask=[...(layout.transferPassThroughIds||[])].sort().join('\0');
+  let c=avoidanceCaches.get(layout);
+  if(c&&c.nodes===nodes&&c.orbits===orbits&&c.radii===radii&&c.mask===mask)return c;
+  const count=nodes.length,index=new Map(nodes.map((n,i)=>[n.id,i]));
+  c={nodes,orbits,radii,mask,index,parents:nodes.map(n=>index.get(orbits[n.id]?.host)??-1),orbitList:nodes.map(n=>orbits[n.id]),passFlags:nodes.map(n=>layout.transferPassThroughIds?.has(n.id)||false),main:nodes.map(n=>!!n.isMainTag),points:new Array(count),previousPoints:new Array(count),offsets:new Array(count),order:layout.orbitOrder.map(n=>index.get(n.id)),nominal:new Float64Array(count*3),inherited:new Float64Array(count*3),displaced:new Float64Array(count*3),boxes:nodes.map((_,i)=>({i,lo:[0,0,0],hi:[0,0,0],path:[]})),age:64};
+  avoidanceCaches.set(layout,c);return c;
+}
+function buildCollisionTree(items,path=[]){
+  const n={lo:[Infinity,Infinity,Infinity],hi:[-Infinity,-Infinity,-Infinity],uniformGroup:items[0]?.group??-1};
+  for(const b of items)if(b.group!==n.uniformGroup)n.uniformGroup=-1;
+  for(const b of items)for(let k=0;k<3;k++){n.lo[k]=Math.min(n.lo[k],b.lo[k]);n.hi[k]=Math.max(n.hi[k],b.hi[k]);}
+  if(items.length<=8){n.items=items;for(const b of items)b.path=[...path,n];}
+  else{let axis=0;for(let k=1;k<3;k++)if(n.hi[k]-n.lo[k]>n.hi[axis]-n.lo[axis])axis=k;items.sort((a,b)=>(a.lo[axis]+a.hi[axis])-(b.lo[axis]+b.hi[axis]));const middle=items.length>>1;n.left=buildCollisionTree(items.slice(0,middle),[...path,n]);n.right=buildCollisionTree(items.slice(middle),[...path,n]);}
+  return n;
+}
+function refitCollisionTree(n){
+  if(!n.items){refitCollisionTree(n.left);refitCollisionTree(n.right);}
+  n.lo.fill(Infinity);n.hi.fill(-Infinity);
+  const children=n.items||[n.left,n.right];n.uniformGroup=children[0]?.group??children[0]?.uniformGroup??-1;
+  for(const b of children){if((b.group??b.uniformGroup)!==n.uniformGroup)n.uniformGroup=-1;for(let k=0;k<3;k++){n.lo[k]=Math.min(n.lo[k],b.lo[k]);n.hi[k]=Math.max(n.hi[k],b.hi[k]);}}
+}
+const boxesOverlap=(a,b)=>a.lo[0]<=b.hi[0]&&a.hi[0]>=b.lo[0]&&a.lo[1]<=b.hi[1]&&a.hi[1]>=b.lo[1]&&a.lo[2]<=b.hi[2]&&a.hi[2]>=b.lo[2];
 export function resolveBodyAvoidance(layout){
-  const nodes=layout.nodes,positions=layout.positions,radii=layout.collisionRadii;
+  const {nodes,positions,collisionRadii:radii}=layout,count=nodes.length,c=collisionCache(layout),passThrough=layout.transferPassThroughIds||new Set(),previous=layout.bodyAvoidancePrevious;
   layout.bodyAvoidance||=new Map();
-  const passThrough=layout.transferPassThroughIds||new Set();
-  const nominal=new Map(nodes.map(n=>[n.id,[...positions[n.id]]])),previous=layout.bodyAvoidancePrevious;
-  const inherited=new Map();
-  for(const n of layout.orbitOrder){
-    const host=layout.orbits[n.id]?.host,parent=inherited.get(host)||[0,0,0],offset=layout.bodyAvoidance.get(n.id)||[0,0,0];
-    const shift=n.isMainTag||passThrough.has(n.id)?[0,0,0]:offset.map((x,k)=>x*.96+parent[k]);inherited.set(n.id,shift);
-    positions[n.id]=nominal.get(n.id).map((x,k)=>x+shift[k]);
-  }
-  const movable=i=>!nodes[i].isMainTag;
-  const pairMinimum=(i,j)=>layout.orbits[nodes[i].id]?.host===nodes[j].id?layout.orbitalClearance(i,j):layout.orbits[nodes[j].id]?.host===nodes[i].id?layout.orbitalClearance(j,i):layout.bodyMinimum(i,j);
-  let corrections=0,converged=false,blockedMainPairs=0;
-  // A sweep index avoids all-pairs work in the ordinary sparse case. It does
-  // not reorder identities, orbit slots, planes or classification membership.
-  const maximum=Math.max(...radii),maxMotion=previous?Math.max(0,...nodes.map(n=>!passThrough.has(n.id)&&previous.has(n.id)?magnitude(positions[n.id].map((x,k)=>x-previous.get(n.id)[k])):0)):0,reach=6*maximum+.04+2*maxMotion;
+  // Reusable numeric workspaces avoid allocating several maps and vectors per body.
+  for(let i=0;i<count;i++){const id=nodes[i].id,p=c.points[i]=positions[id];c.previousPoints[i]=previous?.get(id);let offset=layout.bodyAvoidance.get(id);if(!offset){offset=[0,0,0];layout.bodyAvoidance.set(id,offset);}c.offsets[i]=offset;for(let k=0;k<3;k++)c.nominal[i*3+k]=p[k];}
+  c.inherited.fill(0);
+  const decay=Math.pow(.96,layout.motionStepScale||1);
+  for(const i of c.order){const parent=c.parents[i],offset=c.offsets[i],p=c.points[i];for(let k=0;k<3;k++){const shift=c.main[i]||c.passFlags[i]?0:offset[k]*decay+(parent>=0?c.inherited[parent*3+k]:0);c.inherited[i*3+k]=shift;p[k]=c.nominal[i*3+k]+shift;}}
+  const updateBox=i=>{const b=c.boxes[i],p=c.points[i],old=c.previousPoints[i]||p,pad=radii[i]+.02;for(let k=0;k<3;k++){b.lo[k]=Math.min(p[k],old[k])-pad;b.hi[k]=Math.max(p[k],old[k])+pad;}};
+  for(let i=0;i<count;i++)updateBox(i);
+  // sync() packs direct knowledge-plane siblings using their full subtree
+  // envelopes and the .88/.02 tidal separation bound. A common parent moves
+  // them rigidly; no pair test is needed until an external correction or a
+  // shared-tour override breaks that certified relative configuration.
+  for(let i=0;i<count;i++){const n=nodes[i],o=c.orbitList[i],offset=c.offsets[i];c.boxes[i].group=o?.knowledgePlane&&!o.motion&&!c.main[i]&&!layout.sharedOrbitIds?.has(n.id)&&offset.every(x=>Math.abs(x)<1e-10)?c.parents[i]:-1;}
+  // Stable identities survive changing x-order; refit is linear. Occasional
+  // rebuilds restore tree quality without changing collision semantics.
+  if(!c.root||c.age++>=16){c.root=buildCollisionTree(c.boxes.filter(b=>!passThrough.has(nodes[b.i].id)));c.age=0;}
+  else refitCollisionTree(c.root);
+  const query=(i,after)=>{const box=c.boxes[i],found=[],stack=[c.root];while(stack.length){const n=stack.pop();if(box.group>=0&&n.uniformGroup===box.group||!boxesOverlap(box,n))continue;if(n.items){for(const b of n.items)if(b.i>after&&!(box.group>=0&&b.group===box.group)&&boxesOverlap(box,b))found.push(b.i);}else stack.push(n.left,n.right);}return found.sort((a,b)=>a-b);};
+  const moved=i=>{updateBox(i);const b=c.boxes[i];b.group=-1;for(let a=b.path.length-1;a>=0;a--){const n=b.path[a],children=n.items||[n.left,n.right];n.uniformGroup=children[0]?.group??children[0]?.uniformGroup??-1;for(const child of children)if((child.group??child.uniformGroup)!==n.uniformGroup)n.uniformGroup=-1;for(let k=0;k<3;k++){n.lo[k]=Math.min(n.lo[k],b.lo[k]);n.hi[k]=Math.max(n.hi[k],b.hi[k]);}}};
+  let corrections=0,converged=false,active=null,changedBodies;
+  const blocked=new Set();
+  const correctPair=(i,j,minimum)=>{
+    if(c.passFlags[i]||c.passFlags[j])return false;
+    const p=c.points[i],q=c.points[j],wi=c.main[i]?0:1,wj=c.main[j]?0:1,total=wi+wj;
+    let dx=q[0]-p[0],dy=q[1]-p[1],dz=q[2]-p[2],distance=Math.hypot(dx,dy,dz);
+    if(!total){if(distance<minimum-1e-7)blocked.add(i+':'+j);return false;}
+    let corrected=false;
+    if(distance<minimum-1e-7){const amount=minimum-distance+1e-6,scale=distance>1e-9?1/distance:0;dx=distance>1e-9?dx*scale:0;dy=distance>1e-9?dy*scale:1;dz=distance>1e-9?dz*scale:0;p[0]-=dx*amount*wi/total;p[1]-=dy*amount*wi/total;p[2]-=dz*amount*wi/total;q[0]+=dx*amount*wj/total;q[1]+=dy*amount*wj/total;q[2]+=dz*amount*wj/total;corrections++;corrected=true;}
+    const p0=c.previousPoints[i],q0=c.previousPoints[j],physical=radii[i]+radii[j]+.005;
+    if(p0&&q0){const ax=q0[0]-p0[0],ay=q0[1]-p0[1],az=q0[2]-p0[2],mx=q[0]-p[0]-ax,my=q[1]-p[1]-ay,mz=q[2]-p[2]-az,square=mx*mx+my*my+mz*mz,t=square?Math.max(0,Math.min(1,-(ax*mx+ay*my+az*mz)/square)):1;
+      if(t>1e-5){const cx=ax+t*mx,cy=ay+t*my,cz=az+t*mz,separation=Math.hypot(cx,cy,cz);if(separation<physical-1e-7&&Math.hypot(ax,ay,az)>=physical-1e-7){
+        // Project closing relative motion onto the tangent at its safe start.
+        // The entire resulting segment stays outside the initial separation.
+        // Unlike penetration/t this has no near-zero-time correction explosion.
+        const closing=Math.min(0,(ax*mx+ay*my+az*mz)/(ax*ax+ay*ay+az*az)),correction=[-ax*closing,-ay*closing,-az*closing];
+        for(let k=0;k<3;k++){p[k]-=correction[k]*wi/total;q[k]+=correction[k]*wj/total;}corrections++;corrected=true;
+      }}
+    }
+    if(corrected){changedBodies.add(i);changedBodies.add(j);active?.add(i);active?.add(j);moved(i);moved(j);}return corrected;
+  };
   for(let pass=0;pass<64;pass++){
-    const order=nodes.map((_,i)=>i).sort((i,j)=>positions[nodes[i].id][0]-positions[nodes[j].id][0]);let changed=false;blockedMainPairs=0;
-    for(let a=0;a<order.length;a++)for(let b=a+1;b<order.length;b++){
-      const i=order[a],j=order[b],p=positions[nodes[i].id],q=positions[nodes[j].id];if(q[0]-p[0]>reach)break;
-      // A transit body neither yields nor pushes a resident out of its path.
-      if(passThrough.has(nodes[i].id)||passThrough.has(nodes[j].id))continue;
-      const minimum=pairMinimum(i,j),delta=q.map((x,k)=>x-p[k]),distance=magnitude(delta);
-      if(!movable(i)&&!movable(j)){if(distance<minimum-1e-7)blockedMainPairs++;continue;}
-      // Keep large main bodies on their fixed orbit; satellites yield locally.
-      const wi=movable(i)?1:0,wj=movable(j)?1:0,total=wi+wj;
-      if(distance<minimum-1e-7){
-        const direction=distance>1e-9?delta.map(x=>x/distance):[0,1,0],amount=minimum-distance+1e-6;
-        for(let k=0;k<3;k++){p[k]-=direction[k]*amount*wi/total;q[k]+=direction[k]*amount*wj/total;}
-        corrections++;changed=true;
-      }
-      const p0=previous?.get(nodes[i].id),q0=previous?.get(nodes[j].id),physical=radii[i]+radii[j]+.005;
-      if(p0&&q0){
-        const initial=q0.map((x,k)=>x-p0[k]),end=q.map((x,k)=>x-p[k]),motion=end.map((x,k)=>x-initial[k]),square=motion.reduce((s,x)=>s+x*x,0);
-        const t=square?Math.max(0,Math.min(1,-initial.reduce((s,x,k)=>s+x*motion[k],0)/square)):1;
-        const closest=initial.map((x,k)=>x+t*motion[k]),separation=magnitude(closest);
-        if(t>1e-5&&separation<physical-1e-7&&magnitude(initial)>=physical-1e-7){
-          const direction=separation>1e-9?closest.map(x=>x/separation):[0,1,0],amount=(physical-separation+1e-6)/t;
-          for(let k=0;k<3;k++){p[k]-=direction[k]*amount*wi/total;q[k]+=direction[k]*amount*wj/total;}
-          corrections++;changed=true;
-        }
+    changedBodies=new Set();
+    // Parent clearance is a separate O(N) constraint, so ordinary leaf boxes
+    // never inherit a five-radius envelope merely to find their own parent.
+    for(let i=0;i<count;i++){const parent=c.parents[i];if(parent<0||active&&!active.has(i)&&!active.has(parent))continue;
+      const minimum=layout.orbitalClearance(i,parent),o=c.orbitList[i];
+      if(c.boxes[i].group>=0&&!(active?.has(parent)||changedBodies.has(parent))&&o.targetRadius*.98>=minimum)continue;
+      correctPair(i,parent,minimum);
+    }
+    for(let i=0;i<count;i++){
+      if(c.passFlags[i])continue;
+      const candidates=after=>active&&!active.has(i)?[...active].filter(j=>j>after).sort((a,b)=>a-b):query(i,after);
+      let nearby=candidates(i),cursor=0;
+      while(cursor<nearby.length){const j=nearby[cursor++];if(j===c.parents[i]||i===c.parents[j]||c.passFlags[j])continue;
+        const a=c.boxes[i],b=c.boxes[j];if(!boxesOverlap(a,b))continue;
+        if(a.group>=0&&a.group===b.group)continue;
+        if(correctPair(i,j,layout.bodyMinimum(i,j))){nearby=candidates(j);cursor=0;}
       }
     }
-    if(!changed){converged=blockedMainPairs===0;break;}
+    if(!changedBodies.size){converged=blocked.size===0;break;}active=changedBodies;
   }
-  const displaced=new Map(nodes.map(n=>[n.id,positions[n.id].map((x,k)=>x-nominal.get(n.id)[k])]));
-  for(const n of nodes){
-    const parent=displaced.get(layout.orbits[n.id]?.host)||[0,0,0];
-    layout.bodyAvoidance.set(n.id,n.isMainTag||passThrough.has(n.id)?[0,0,0]:displaced.get(n.id).map((x,k)=>x-parent[k]));
-    if(previous?.has(n.id))layout.velocities[n.id]=positions[n.id].map((x,k)=>x-previous.get(n.id)[k]);
+  for(let i=0;i<count;i++){const p=c.points[i];for(let k=0;k<3;k++)c.displaced[i*3+k]=p[k]-c.nominal[i*3+k];}
+  const savedPrevious=previous||new Map();
+  for(let i=0;i<count;i++){
+    const n=nodes[i],parent=c.parents[i],p=c.points[i],p0=c.previousPoints[i],offset=c.offsets[i];
+    for(let k=0;k<3;k++)offset[k]=n.isMainTag||passThrough.has(n.id)?0:c.displaced[i*3+k]-(parent>=0?c.displaced[parent*3+k]:0);
+    if(p0){const v=layout.velocities[n.id]||=[0,0,0];for(let k=0;k<3;k++)v[k]=p[k]-p0[k];}
+    let stored=savedPrevious.get(n.id);if(!stored){stored=[0,0,0];savedPrevious.set(n.id,stored);}for(let k=0;k<3;k++)stored[k]=p[k];
   }
-  // Resident tours resume from the position actually rendered after avoidance.
-  for(const group of layout.sharedOrbits||[]){
-    const tour=group.tour;if(!tour?.world||passThrough.has(group.id))continue;
-    tour.world=[...positions[group.id]];tour.lastRenderedWorld=[...positions[group.id]];tour.worldVelocity=[...(layout.velocities[group.id]||[0,0,0])];
-  }
-  layout.bodyAvoidancePrevious=new Map(nodes.map(n=>[n.id,[...positions[n.id]]]));
-  layout.bodyAvoidanceStats={corrections,converged,blockedMainPairs};
+  for(const group of layout.sharedOrbits||[]){const tour=group.tour;if(!tour?.world||passThrough.has(group.id))continue;tour.world=[...positions[group.id]];tour.lastRenderedWorld=[...positions[group.id]];tour.worldVelocity=[...(layout.velocities[group.id]||[0,0,0])];}
+  layout.bodyAvoidancePrevious=savedPrevious;layout.bodyAvoidanceStats={corrections,converged,blockedMainPairs:blocked.size};
 }
 
 // Geometry is inferred only from recorded relations and their shared neighbours.
@@ -621,7 +669,8 @@ export class AffinityLayout {
     }
     for(const group of this.sharedOrbits)if(this.orbits[group.id])this.orbits[group.id].launchKey='shared:'+group.hosts.map(i=>nodes[i].id).sort().join('|');
     this.centralOrbitFrame=orbitalFrame([...this.starIds].sort().join('|'));
-    for(const o of Object.values(this.orbits)){o.frame=orbitalFrame(o.planeKey||o.host+':ring:'+(o.ring??'central'));o.axis=o.frame.normal;}
+    const orbitFrames=new Map();
+    for(const o of Object.values(this.orbits)){const key=o.planeKey||o.host+':ring:'+(o.ring??'central');if(!orbitFrames.has(key))orbitFrames.set(key,orbitalFrame(key));o.frame=orbitFrames.get(key);o.axis=o.frame.normal;}
     for(const group of this.sharedOrbits)group.frame=orbitalFrame(this.membershipPlaneKeys.get(group.id));
     this.orbitDepths=Object.create(null);
     const depth=id=>this.orbitDepths[id]??(this.orbitDepths[id]=this.orbits[id]?1+depth(this.orbits[id].host):0);
@@ -717,6 +766,7 @@ export class AffinityLayout {
     const systemBound=Math.max(centralExtent,...nodes.filter(n=>this.orbits[n.id]?.kind==='planet').map(n=>this.orbits[n.id].targetRadius+this.systemExtents[nodeIndex.get(n.id)]+2*this.centralOrbitRadius));
     this.tourWorldBound=Math.max(100,systemBound*4);
     this.freeOrbits=new Map();
+    this.freeNodes=free;
     for(let k=0;k<free.length;k++){
       const {row:shell,slot,capacity:slots}=fibonacciOrbitSlot(k);
       const radius=Math.max(systemBound+freeSize+SURFACE_GAP+shell*(2*freeSize+SURFACE_GAP),(slots>1?(freeSize+SURFACE_GAP/2)/Math.sin(Math.PI/slots):0));
@@ -754,7 +804,17 @@ export class AffinityLayout {
   }
 
   advance(elapsed) {
-    this.accumulator += Math.max(0, Math.min(elapsed, 0.1))*this.timeScale;
+    // Active display time is never clipped by frame cost. The view resets its
+    // timestamp after a hidden-tab pause instead of slowing visible animation.
+    this.accumulator += Math.max(0, Number.isFinite(elapsed)?elapsed:0)*this.timeScale;
+    // These are analytic display orbits, not a force integrator. Evaluate one
+    // swept, constrained pose at the current time instead of rebuilding the
+    // same large scene for every missed 1/30 tick. Logical angular time and
+    // real-time transfer distance advance by the complete elapsed interval.
+    if(this.coreId&&this.nodes.length>=2000&&this.accumulator>0){
+      const scale=this.accumulator*30;this.accumulator=0;this.motionStepScale=scale;
+      try{this.step();}finally{this.motionStepScale=1;}return true;
+    }
     let changed = false;
     while (this.accumulator >= 1 / 30-1e-10) {
       this.step();
@@ -767,7 +827,7 @@ export class AffinityLayout {
   step({ floating = true } = {}) {
     const count = this.nodes.length;
     if (!count) return;
-    if(floating&&this.coreId){this.stepGravity();this.time+=1/30;this.steps++;return;}
+    if(floating&&this.coreId){const scale=this.motionStepScale||1;this.stepGravity();this.time+=scale/30;this.steps+=scale;return;}
     const forces = new Float64Array(count * 3);
     const index = new Map(this.nodes.map((n, i) => [n.id, i]));
     const positions = this.nodes.map((n) => this.positions[n.id]);
@@ -932,7 +992,7 @@ export class AffinityLayout {
   stepGravity(){
     // Display choreography only: no force integration, impulses or escape velocities.
     const stars=[...this.starIds].map(id=>this.nodeIndices.get(id));
-    if(this.centerTarget){let remaining=0;this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*.01;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
+    if(this.centerTarget){let remaining=0;const alpha=1-Math.pow(.99,this.motionStepScale||1);this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*alpha;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
     const center=this.center||[0,this.eclipticY,0];
     if(stars.length>1){
       const radius=this.centralOrbitRadius;
@@ -943,30 +1003,34 @@ export class AffinityLayout {
       const mean=[0,1,2].map(a=>stars.reduce((sum,i,k)=>sum+offsets[k][a]*this.masses[i],0)/mass);
       stars.forEach((i,k)=>{const id=this.nodes[i].id;this.positions[id]=center.map((v,a)=>v+offsets[k][a]-mean[a]);this.velocities[id]=[0,0,0];});
     }else if(this.coreId){this.positions[this.coreId]=[...center];this.velocities[this.coreId]=[0,0,0];}
-    this.lockPlanetOrbits();
-    for(const n of this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
+    const profileStart=performance.now();this.lockPlanetOrbits();const orbitEnd=performance.now();
+    for(const n of this.freeNodes||this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
       const o=this.freeOrbits.get(n.id),a=o.phase+this.steps*.0007,r=o.radius;
       const frame=o.frame,goal=center.map((x,k)=>x+(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a))*r),old=this.positions[n.id];
       if(this.freeTransitions?.has(n.id)){const delta=goal.map((x,k)=>x-old[k]),distance=Math.hypot(...delta),limit=Math.max(.01,Math.hypot(...old.map((x,k)=>x-center[k]))*.02);this.positions[n.id]=old.map((x,k)=>x+delta[k]*Math.min(1,limit/(distance||1)));if(distance<=limit)this.freeTransitions.delete(n.id);}else this.positions[n.id]=goal;
       this.velocities[n.id]=this.positions[n.id].map((x,k)=>x-old[k]);
     }
     // Transfer cruise uses wall-clock time; ordinary orbit clocks keep their scale.
-    advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9));
-    resolveBodyAvoidance(this);
+    const tourStart=performance.now();advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9)*(this.motionStepScale||1));
+    const avoidStart=performance.now();resolveBodyAvoidance(this);
+    this.stepCosts={orbits:orbitEnd-profileStart,tours:avoidStart-tourStart,avoidance:performance.now()-avoidStart};
   }
   lockPlanetOrbits({advance=true}={}){
+    const stepScale=this.motionStepScale||1;
     if(advance)this.preparePlanetSpeeds();
-    const shifts=new Map(),boosts=new Map();
-    for(const n of this.orbitOrder){
-      const orbit=this.orbits[n.id];if(!orbit||orbit.kind==='star')continue;
-      const p=this.positions[n.id],v=this.velocities[n.id],oldP=[...p],oldV=[...v];
-      for(let a=0;a<3;a++){p[a]+=shifts.get(orbit.host)?.[a]||0;v[a]+=boosts.get(orbit.host)?.[a]||0;}
+    if(this.orbitHostSource!==this.orbits){this.orbitHostSource=this.orbits;this.orbitHostIds=new Set(Object.values(this.orbits).map(o=>o.host));this.orbitEvaluation=this.orbitOrder.filter(n=>this.orbits[n.id]&&this.orbits[n.id].kind!=='star').map(n=>({n,orbit:this.orbits[n.id],i:this.nodeIndices.get(n.id),host:this.nodeIndices.get(this.orbits[n.id].host),hasChildren:this.orbitHostIds.has(n.id)}));this.orbitWork={points:new Array(this.nodes.length),velocities:new Array(this.nodes.length),shifts:new Float64Array(this.nodes.length*3),boosts:new Float64Array(this.nodes.length*3)};}
+    const tidalCache=new Map();
+    const {points,velocities,shifts,boosts}=this.orbitWork;shifts.fill(0);boosts.fill(0);
+    for(let i=0;i<this.nodes.length;i++){points[i]=this.positions[this.nodes[i].id];velocities[i]=this.velocities[this.nodes[i].id];}
+    for(const entry of this.orbitEvaluation){
+      const {n,orbit,i,host,hasChildren}=entry,p=points[i],v=velocities[i],oldP=hasChildren||orbit.motion?[...p]:null,oldV=hasChildren?[...v]:null;
+      for(let a=0;a<3;a++){p[a]+=shifts[host*3+a];v[a]+=boosts[host*3+a];}
       {
-        const i=this.nodeIndices.get(n.id),host=this.nodeIndices.get(orbit.host),q=this.positions[orbit.host],u=this.velocities[orbit.host];
+        const q=points[host],u=velocities[host];
         let baseRadius=Math.max(orbit.targetRadius,this.bodyMinimum(i,host));
-        if(orbit.motion){const m=orbit.motion,limit=Math.max(.01,m.radius*.015),delta=baseRadius-m.radius;
-          if(advance){m.radius+=Math.max(-limit,Math.min(limit,delta));m.drift=Math.max(0,m.drift-.006);
-            const unit=v=>{const len=Math.hypot(...v)||1;return v.map(x=>x/len);},u=unit(m.frame.u.map((x,k)=>x+(orbit.frame.u[k]-x)*.01)),raw=m.frame.v.map((x,k)=>x+(orbit.frame.v[k]-x)*.01),dot=raw.reduce((sum,x,k)=>sum+x*u[k],0),v=unit(raw.map((x,k)=>x-dot*u[k]));
+        if(orbit.motion){const m=orbit.motion,limit=Math.max(.01,m.radius*.015)*stepScale,delta=baseRadius-m.radius;
+          if(advance){m.radius+=Math.max(-limit,Math.min(limit,delta));m.drift=Math.max(0,m.drift-.006*stepScale);
+            const alpha=1-Math.pow(.99,stepScale),unit=v=>{const len=Math.hypot(...v)||1;return v.map(x=>x/len);},u=unit(m.frame.u.map((x,k)=>x+(orbit.frame.u[k]-x)*alpha)),raw=m.frame.v.map((x,k)=>x+(orbit.frame.v[k]-x)*alpha),dot=raw.reduce((sum,x,k)=>sum+x*u[k],0),v=unit(raw.map((x,k)=>x-dot*u[k]));
             m.frame={u,v,normal:[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]]};
           }
           baseRadius=Math.max(m.radius,this.orbitalClearance(i,host));
@@ -974,41 +1038,43 @@ export class AffinityLayout {
         const initialPhase=orbit.phase??Math.atan2(p[2]-q[2],p[0]-q[0]);
         // Each planet owns a continuous clock; close followers yield without stopping.
         // Visual orbit periods stay observable even after clearance enlarges a ring.
-        const omega=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08);
+        const omegaBase=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):(orbit.baseOmega??=(orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08))),omega=omegaBase*stepScale;
         // Persistent clocks survive sync(): background imports must not reset
         // any descendant's revolution. Co-orbiting bodies share a phase clock.
-        const clockKey=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
-        let clock=this.orbitClocks.get(clockKey);
+        const clockKey=orbit.clockKey??=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
+        let clock=orbit.clockReference||this.orbitClocks.get(clockKey);
         if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(clockKey,clock);}
+        orbit.clockReference=clock;
         if(advance&&clock.lastStep!==this.steps){clock.angle-=omega;clock.lastStep=this.steps;}
-        orbit.angularVelocity=omega;orbit.lockAngle=initialPhase+clock.angle+(orbit.motion?.drift||0);
+        orbit.angularVelocity=omegaBase;orbit.lockAngle=initialPhase+clock.angle+(orbit.motion?.drift||0);
         // Only local satellites receive a bounded, differential tidal response.
         const parentOrbit=this.orbits[orbit.host],ancestor=parentOrbit&&this.nodeIndices.get(parentOrbit.host);
         let perturbation=0;
         if(orbit.kind!=='planet'&&ancestor!==undefined){
-          const remote=this.positions[parentOrbit.host],d=Math.hypot(...remote.map((x,a)=>x-q[a]));
-          const tide=this.masses[ancestor]/this.masses[host]*(baseRadius/Math.max(d,baseRadius))**3;
-          const delta=remote.map((x,a)=>x-q[a]),project=axis=>delta.reduce((sum,x,a)=>sum+x*axis[a],0);
-          const amplitude=Math.min(.02,Math.max(0,tide)*.1),direction=Math.atan2(project(orbit.frame.v),project(orbit.frame.u));
+          let byFrame=tidalCache.get(orbit.host);if(!byFrame){byFrame=new Map();tidalCache.set(orbit.host,byFrame);}
+          let tidal=byFrame.get(orbit.frame);
+          if(!tidal){const remote=this.positions[parentOrbit.host],dx=remote[0]-q[0],dy=remote[1]-q[1],dz=remote[2]-q[2],project=axis=>dx*axis[0]+dy*axis[1]+dz*axis[2];tidal={distance:Math.hypot(dx,dy,dz),ratio:this.masses[ancestor]/this.masses[host],direction:Math.atan2(project(orbit.frame.v),project(orbit.frame.u))};byFrame.set(orbit.frame,tidal);}
+          const tide=tidal.ratio*(baseRadius/Math.max(tidal.distance,baseRadius))**3;
+          const amplitude=Math.min(.02,Math.max(0,tide)*.1),direction=tidal.direction;
           perturbation=amplitude*Math.cos(2*(orbit.lockAngle-direction));
         }
         const radius=Math.max(this.bodyMinimum(i,host),baseRadius*(1+perturbation));
         orbit.radialPerturbation=perturbation;
         const c=Math.cos(orbit.lockAngle),s=Math.sin(orbit.lockAngle);
         const frame=orbit.motion?.frame||orbit.frame;
-        let next=q.map((x,a)=>x+(frame.u[a]*c+frame.v[a]*s)*radius);
-        if(orbit.motion)next=this.steerPlanetTransition(n.id,orbit,oldP,next,q);
-        for(let a=0;a<3;a++){p[a]=next[a];v[a]=orbit.motion?p[a]-oldP[a]:u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
+        let next;if(orbit.motion)next=this.steerPlanetTransition(n.id,orbit,oldP,q.map((x,a)=>x+(frame.u[a]*c+frame.v[a]*s)*radius),q);
+        for(let a=0;a<3;a++){p[a]=next?next[a]:q[a]+(frame.u[a]*c+frame.v[a]*s)*radius;v[a]=orbit.motion?p[a]-oldP[a]:u[a]+(frame.u[a]*s-frame.v[a]*c)*radius*omega;}
         if(orbit.motion&&orbit.motion.drift===0&&Math.abs(orbit.motion.radius-orbit.targetRadius)<1e-7&&['u','v'].every(key=>orbit.motion.frame[key].every((x,k)=>Math.abs(x-orbit.frame[key][k])<1e-7)))delete orbit.motion;
       }
-      shifts.set(n.id,p.map((x,a)=>x-oldP[a]));boosts.set(n.id,v.map((x,a)=>x-oldV[a]));
+      if(hasChildren)for(let a=0;a<3;a++){shifts[i*3+a]=p[a]-oldP[a];boosts[i*3+a]=v[a]-oldV[a];}
     }
   }
 
   preferredPlanetSpeed(id,orbit){return .003/(1+(orbit.ring||0)*.14)*(.85+.3*phaseOf('planet-period:'+id)/(Math.PI*2));}
   preparePlanetSpeeds(){
     const groups=new Map(),speeds=new Map();
-    for(const n of this.nodes){const orbit=this.orbits[n.id];if(orbit?.kind!=='planet')continue;
+    if(this.planetSpeedSource!==this.orbits){this.planetSpeedSource=this.orbits;this.planetSpeedNodes=this.nodes.filter(n=>this.orbits[n.id]?.kind==='planet');}
+    for(const n of this.planetSpeedNodes){const orbit=this.orbits[n.id];
       const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClocks.get(key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
       if(!clock){clock={angle:0,lastStep:-1,omega:preferred};this.orbitClocks.set(key,clock);}
       const speed=(clock.omega??preferred)+(preferred-(clock.omega??preferred))*.04;speeds.set(n.id,speed);orbit.preferredAngularVelocity=preferred;
@@ -1027,7 +1093,7 @@ export class AffinityLayout {
         speeds.set(follower.id,Math.min(speeds.get(follower.id),maximum));
       }
     }
-    for(const n of this.nodes){const o=this.orbits[n.id];if(o?.kind==='planet')this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
+    for(const n of this.planetSpeedNodes){const o=this.orbits[n.id];this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
     this.planetStepSpeeds=speeds;
   }
 
@@ -1163,6 +1229,9 @@ export class AffinityLayout {
   }
 }
 
+
+
+
 import {MOUSE,Vector3} from 'three';
 
 export function overviewDistance(radius,fov,aspect){
@@ -1220,9 +1289,35 @@ export function nodeFocusRegion(options){
   return mainTagRegion({...options,nodes:[{...anchor,isMainTag:true,mainTag:anchor.id},...options.nodes.filter(n=>n.id!==anchor.id)],mainTag:anchor.id});
 }
 
+const ai=/\b(?:ai|artificial intelligence|machine learning|deep learning|llm|gpt|claude|gemini|openai|codex|lora|dino|sdxl|qwen|ollama|agentic)\b|人工智能|机器学习|深度学习|大模型|语言模型|智能体|模型训练|模型推理|提示词|扩散模型/i;
+export function tagHierarchy(name){
+ const text=String(name||'').trim();if(!text)return null;
+ if(ai.test(text))return {primary:'人工智能',secondary:/^(?:AI|Artificial Intelligence|人工智能)$/i.test(text)?null:text};
+ const project=text.match(/^(?:项目|Project)\s*[:：/·]\s*(.+)$/i);if(project)return {primary:'项目',secondary:project[1].trim()};
+ const divided=text.split(/\s*(?:\/|::|＞|>)\s*/);return {primary:divided[0],secondary:divided.length>1?divided.slice(1).join(' / '):null};
+}
+export function nodeTagHierarchy(node){
+ const map=new Map();for(const tag of node.mainTags||[]){const h=tagHierarchy(tag.name);if(!h)continue;if(!map.has(h.primary))map.set(h.primary,new Set());if(h.secondary)map.get(h.primary).add(h.secondary);}
+ for(const project of node.projectScopes||[]){if(!map.has('项目'))map.set('项目',new Set());map.get('项目').add(project.name);}
+ return [...map].map(([primary,sub])=>({primary,secondary:[...sub].sort()}));
+}
+export function branchRoot(title){let name=String(title||'').normalize('NFKC').trim(),branched=false;while(/^(?:分支|branch)\s*[·•:：\-]\s*/i.test(name)){name=name.replace(/^(?:分支|branch)\s*[·•:：\-]\s*/i,'');branched=true;}return {name,branched};}
+export function projectGroups(nodes,jobs=[]){
+ const order=new Map(jobs.map((j,i)=>[j.sourceId,i])),groups=new Map();for(const n of nodes.filter(n=>n.kind==='vault'&&!n.mergedInto)){
+  const root=branchRoot(n.title);if(!root.name||/^(?:新聊天|new chat|untitled|无标题)$/i.test(root.name))continue;
+  const key=root.name.toLocaleLowerCase();if(!groups.has(key))groups.set(key,{id:'project:'+encodeURIComponent(key),name:root.name,members:[],branched:false,explicitProject:/项目|\bproject\b|山河扇|yumeiren|venus/i.test(root.name)});const g=groups.get(key);g.branched||=root.branched;g.members.push({id:n.id,title:n.title,path:n.path,order:order.get(n.id)??Number.MAX_SAFE_INTEGER});
+ }
+ return [...groups.values()].filter(g=>g.branched||g.members.length>1||g.explicitProject).map(g=>({...g,members:g.members.sort((a,b)=>a.order-b.order),continuousObjectId:g.id}));
+}
+export function projectScopesFor(nodes,groups){
+ const direct=new Map();for(const g of groups)for(const m of g.members)direct.set(m.id,[{id:g.id,name:g.name}]);const byId=new Map(nodes.map(n=>[n.id,n]));
+ const get=(id,seen=new Set())=>{if(direct.has(id))return direct.get(id);if(seen.has(id))return [];seen.add(id);const result=new Map();for(const s of byId.get(id)?.sources||[])for(const scope of get(s.id,new Set(seen)))result.set(scope.id,scope);return [...result.values()];};return new Map(nodes.map(n=>[n.id,get(n.id)]));
+}
 
-export function mainTagNames(node){return [...new Set((node.mainTags||[]).map(tag=>tag.name))];}
-export function matchesMainTag(node,name){return !name||node.isMainTag&&node.mainTag===name||mainTagNames(node).includes(name);}
+
+
+export function mainTagNames(node){return nodeTagHierarchy(node).map(tag=>tag.primary);}
+export function matchesMainTag(node,name){if(!name)return true;const [primary,secondary]=name.split('::');return node.isMainTag?node.mainTag===primary:nodeTagHierarchy(node).some(tag=>tag.primary===primary&&(!secondary||tag.secondary.includes(secondary)));}
 export function effectiveDegrees(edges){
   const seen=new Set(),degrees={};
   for(const edge of edges){
@@ -1243,10 +1338,10 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
     const angle=(value>>>0)/4294967296*Math.PI*2,id='@main:'+nodes[0]?.kind+':'+name;
     const members=nodes.filter(node=>mainTagNames(node).includes(name));
     const connectionCount=new Set(members.map(node=>node.id)).size;
-    cores.push({id,title:name,isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
+    cores.push({id,title:tr(name),isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
     if(centered)seeds[id]=[0,0,0];else seeds[id]||=[Math.cos(angle)*spacing*7,Math.sin(angle*2.3)*spacing*3,Math.sin(angle)*spacing*7];
     for(const node of members){
-      const evidence=node.mainTags.find(tag=>tag.name===name);
+      const evidence=(node.mainTags||[]).find(tag=>tagHierarchy(tag.name)?.primary===name)||{reason:tr('同一项目范围（按分支标题归组）'),quote:''};
       anchors.push({id:'@anchor:'+id+':'+node.id,from:id,to:node.id,type:'@semantic',strength:1,semanticAnchor:true,membershipLink:true,mainTag:name,summary:evidence.reason,reason:evidence.reason,sources:[{id:node.id,quote:evidence.quote}]});
     }
   }
@@ -1273,7 +1368,7 @@ export function mainTagHeat(count,steps=MAIN_TAG_HEAT_STEPS){
 
 // Render-only distance-sampled histories; no writes to layout or knowledge data.
 export class MotionTrails {
- constructor({samples=8,uploadMs=1000/30,stopFadeMs=1500}={}){this.samples=samples;this.uploadMs=uploadMs;this.stopFadeMs=stopFadeMs;this.ids=[];this.lastUpload=-Infinity;}
+ constructor({samples=8,uploadMs=1000/30,stopFadeMs=1500,sampleSpacing=1.05}={}){this.samples=samples;this.uploadMs=uploadMs;this.stopFadeMs=stopFadeMs;this.sampleSpacing=sampleSpacing;this.ids=[];this.lastUpload=-Infinity;}
  sync(nodes,radii,colorFor){
   const same=nodes.length===this.ids.length&&nodes.every((n,i)=>n.id===this.ids[i]);
   if(!same){const old=this.ids.length?{index:new Map(this.ids.map((id,i)=>[id,i])),history:this.history,times:this.times,counts:this.counts,heads:this.heads,lastPosition:this.lastPosition,lastMovement:this.lastMovement}:null;this.ids=nodes.map(n=>n.id);const n=nodes.length,s=this.samples;this.history=new Float64Array(n*s*3);this.times=new Float64Array(n*s);this.counts=new Uint8Array(n);this.heads=new Uint8Array(n);this.lastPosition=new Float64Array(n*3);this.lastMovement=new Float64Array(n);this.positions=new Float32Array(n*s*6);this.colors=new Float32Array(n*s*8);this.widths=new Float32Array(n*s);this.distances=new Float32Array(n*s*2);
@@ -1290,7 +1385,7 @@ export class MotionTrails {
    if(movement>1e-9){if(now-this.lastMovement[i]>=this.stopFadeMs)count=0;this.lastMovement[i]=now;}
    this.lastPosition[previous]=p[0];this.lastPosition[previous+1]=p[1];this.lastPosition[previous+2]=p[2];
    const k0=(base+head)*3;
-   if(!count||Math.hypot(p[0]-this.history[k0],p[1]-this.history[k0+1],p[2]-this.history[k0+2])>=r*1.05){head=count?(head+1)%slots:0;this.heads[i]=head;this.counts[i]=count=Math.min(slots,count+1);const k=(base+head)*3;this.history[k]=p[0];this.history[k+1]=p[1];this.history[k+2]=p[2];this.times[base+head]=now;if(count===1)this.lastMovement[i]=now;}
+   if(!count||Math.hypot(p[0]-this.history[k0],p[1]-this.history[k0+1],p[2]-this.history[k0+2])>=r*this.sampleSpacing){head=count?(head+1)%slots:0;this.heads[i]=head;this.counts[i]=count=Math.min(slots,count+1);const k=(base+head)*3;this.history[k]=p[0];this.history[k+1]=p[1];this.history[k+2]=p[2];this.times[base+head]=now;if(count===1)this.lastMovement[i]=now;}
    const stoppedFade=Math.max(0,1-(now-this.lastMovement[i])/this.stopFadeMs);if(!stoppedFade)continue;
    let ax=p[0],ay=p[1],az=p[2],travel=0;const maximum=r*8;
    for(let segment=0;segment<count;segment++){
@@ -1307,11 +1402,29 @@ export class MotionTrails {
 
 
 
+export class NetworkAnimationClock {
+  constructor(now=0,paused=false){this.last=now;this.now=now;this.paused=paused;}
+  sample(now){const elapsed=Math.max(0,now-this.last);this.last=now;if(this.paused)return 0;this.now+=elapsed;return elapsed/1000;}
+  setPaused(value,now){this.sample(now);this.paused=!!value;this.last=now;return this.paused;}
+  resetFrame(now){this.last=now;}
+}
+
+import { heatText } from "/i18n.js";
+
 
 
 const layoutSessions = new Map();
+const replayEpochs = new Map();
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+export function proceduralStarMaterial(){return new THREE.ShaderMaterial({depthWrite:true,depthTest:true,toneMapped:false,
+  vertexShader:'varying vec2 starUv;varying vec3 starColor;void main(){starUv=uv;starColor=vec3(1.0);\n#ifdef USE_INSTANCING_COLOR\nstarColor=instanceColor;\n#endif\nvec4 center=modelViewMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0);float radius=length(instanceMatrix[0].xyz);center.xy+=position.xy*radius;gl_Position=projectionMatrix*center;}',
+  fragmentShader:'varying vec2 starUv;varying vec3 starColor;void main(){vec2 p=starUv*2.0-1.0;float r2=dot(p,p);if(r2>1.0)discard;float shade=0.86+0.14*sqrt(max(0.0,1.0-r2));gl_FragColor=vec4(starColor*shade,1.0);\n#include <colorspace_fragment>\n}'
+});}
+export function raycastProceduralStars(raycaster,hits){
+  const matrix=new THREE.Matrix4(),center=new THREE.Vector3(),scale=new THREE.Vector3(),sphere=new THREE.Sphere(),hit=new THREE.Vector3();
+  for(let i=0;i<this.count;i++){this.getMatrixAt(i,matrix);matrix.premultiply(this.matrixWorld);center.setFromMatrixPosition(matrix);scale.setFromMatrixScale(matrix);sphere.set(center,Math.max(Math.abs(scale.x),Math.abs(scale.y),Math.abs(scale.z)));if(!raycaster.ray.intersectSphere(sphere,hit))continue;const distance=raycaster.ray.origin.distanceTo(hit);if(distance<raycaster.near||distance>raycaster.far)continue;hits.push({distance,point:hit.clone(),object:this,instanceId:i});}
+}
 export class Network {
   constructor(
     host,
@@ -1357,6 +1470,9 @@ export class Network {
     this.hidden = new Set();
     this.frames = [];
     this.last = performance.now();
+    this.animationClock=new NetworkAnimationClock(this.last);
+    this.visibilityClock=()=>{this.lastSimulationFrame=performance.now();this.last=this.lastSimulationFrame;this.animationClock.resetFrame(this.last);};
+    document.addEventListener('visibilitychange',this.visibilityClock);
     this.frame = 0;
     this.resize = new ResizeObserver(() => {
       const { width, height } = host.getBoundingClientRect();
@@ -1432,15 +1548,17 @@ export class Network {
     m.geometry.dispose();
     m.material.dispose();
   }
-  update({ nodes, edges, positions, types, settings, hidden, visibleIds, mainTag=this.mainTag,layoutEpoch=0 }) {
+  update({ nodes, edges, positions, types, settings, hidden, visibleRelationTypes=null,visibleIds, mainTag=this.mainTag,layoutEpoch=0 }) {
+    const syntheticBenchmark=nodes[0]?.id?.startsWith('bench-');
     const grouped=buildMainTagGraph(nodes.filter(n=>!n.isMainTag),edges.filter(e=>!e.semanticAnchor),positions,settings.distance);
     nodes=grouped.nodes;edges=grouped.edges;positions=grouped.positions;this.mainTag=mainTag||null;
     if(visibleIds){visibleIds=new Set(visibleIds);for(const n of nodes)if(n.isMainTag)visibleIds.add(n.id);}
-    const key = nodes[0]?.id?.startsWith("bench-")
+    const key = syntheticBenchmark
       ? "benchmark/" + nodes.length
       : this.layoutKey;
-    if(this.layoutEpoch!==layoutEpoch){layoutSessions.delete(key);this.layoutEpoch=layoutEpoch;this.selected=null;this.followPosition=null;this.primaryFollowPosition=null;this.revealedMainTag=null;this.initialFit=false;this.simulationFit=false;}
+    if(this.layoutEpoch!==layoutEpoch){layoutSessions.delete(key);this.layoutEpoch=layoutEpoch;this.replayPending=layoutEpoch>0;this.expansion=null;if(this.trailMesh)this.disposeMesh(this.trailMesh);this.trailMesh=null;this.motionTrails=null;this.selected=null;this.followPosition=null;this.primaryFollowPosition=null;this.revealedMainTag=null;this.initialFit=false;this.simulationFit=false;}
     if (!layoutSessions.has(key)) layoutSessions.set(key, new AffinityLayout());
+    const previousLayout=this.layout;
     this.layout = layoutSessions.get(key);
     const previousLayoutSignature=this.layout.signature;
     this.layout.sync({
@@ -1452,9 +1570,10 @@ export class Network {
       baseRadius:settings.baseRadius,
     });
     // Place new/grown spheres safely before exposing their first rendered frame.
-    if(this.layout.signature!==previousLayoutSignature)this.layout.step();
+    if(this.layout.signature!==previousLayoutSignature&&!this.animationClock.paused)this.layout.step();
     positions = this.layout.positions;
     this.nodes = nodes;
+    this.updateReplayPositions(this.animationClock.now);
     this.nodeById=new Map(nodes.map(n=>[n.id,n]));
     this.visibleIds = visibleIds;
     this.renderNodes = visibleIds
@@ -1464,7 +1583,8 @@ export class Network {
     this.positions = positions;
     this.types = types;
     this.settings = settings;
-    this.hidden = hidden || new Set();
+    this.visibleRelationTypes=visibleRelationTypes;
+    this.hidden = visibleRelationTypes?new Set([...types,{id:'@semantic'}].filter(t=>!visibleRelationTypes.has(t.id)).map(t=>t.id)):hidden||new Set([...types,{id:'@semantic'}].map(t=>t.id));
     this.disposeMesh(this.mesh);
     this.disposeMesh(this.glow);
     for (const m of this.edgeMeshes || []) this.disposeMesh(m);
@@ -1473,12 +1593,15 @@ export class Network {
     this.radii = {};
     this.degree = degree;
     const dummy = new THREE.Object3D();
+    const pointStars=this.renderNodes.length>2000;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio,pointStars?1:2));
     this.mesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(1, 10, 8),
-      new THREE.MeshBasicMaterial({ color: "#ffffff" }),
+      pointStars?new THREE.PlaneGeometry(2,2):new THREE.SphereGeometry(1,10,8),
+      pointStars?proceduralStarMaterial():new THREE.MeshBasicMaterial({ color: "#ffffff" }),
       this.renderNodes.length,
     );
-    this.mesh.material.onBeforeCompile=shader=>{
+    if(pointStars)this.mesh.raycast=raycastProceduralStars;
+    else this.mesh.material.onBeforeCompile=shader=>{
       shader.vertexShader='varying vec3 venusSurface;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvenusSurface=position;');
       shader.fragmentShader='varying vec3 venusSurface;\n'+shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb *= 0.86 + 0.14 * (0.5 + 0.5 * sin(atan(venusSurface.z,venusSurface.x)*3.0+venusSurface.y*6.0));');
     };
@@ -1488,7 +1611,9 @@ export class Network {
       new THREE.ShaderMaterial({
         transparent:true, depthWrite:false, depthTest:true,
         blending:THREE.AdditiveBlending, toneMapped:false,
+        uniforms:{viewportHeight:{value:Math.max(1,this.host.clientHeight)}},
         vertexShader:`
+          uniform float viewportHeight;
           varying vec2 haloUv;
           varying vec3 haloColor;
           void main() {
@@ -1500,7 +1625,10 @@ export class Network {
             #endif
             vec4 center = modelViewMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0);
             float radius = length(instanceMatrix[0].xyz);
-            center.xy += position.xy * radius * 8.0;
+            // Keep a six-CSS-pixel light visible at galactic overview scales.
+            // The physical sphere and all orbital distances remain unchanged.
+            float minimumDiameter = 12.0 * max(-center.z,0.0001) / (projectionMatrix[1][1] * max(viewportHeight,1.0));
+            center.xy += position.xy * max(radius * 8.0,minimumDiameter);
             gl_Position = projectionMatrix * center;
           }
         `,
@@ -1538,6 +1666,7 @@ export class Network {
     if(this.mesh.instanceColor)this.mesh.instanceColor.needsUpdate=true;
     this.mesh.computeBoundingSphere();
     this.scene.add(this.mesh);
+    this.syncMotionTrails();
     this.glow.instanceMatrix.needsUpdate=true;
     if(this.glow.instanceColor)this.glow.instanceColor.needsUpdate=true;
     // The billboard extends beyond its core sphere, so do not cull it using core bounds.
@@ -1647,6 +1776,7 @@ export class Network {
       this.fit();
       this.initialFit = true;
     }
+    if(previousLayout!==this.layout){this.lastSimulationFrame=performance.now();this.animationClock.resetFrame(this.lastSimulationFrame);}
   }
   refreshLabelCandidates(now) {
     if (!this.positions || now - (this.lastLabelCandidates || 0) < 180) return;
@@ -1672,16 +1802,53 @@ export class Network {
       if (!node) return;
       entry.el.dataset.nodeId = node.id;
       entry.el.textContent = shortNodeLabel(node, 20);
-      entry.el.title = node.title + (node.path ? '\n' + node.path : '') + (node.heat?.name ? '\n'+node.heat.name+' · '+node.heat.label+'\n'+node.heat.reason : '');
+      const heat=node.heat?.name?heatText(node.heat):null;
+      entry.el.title = node.title + (node.path ? '\n' + node.path : '') + (heat ? '\n'+heat.name+' · '+heat.label+'\n'+heat.reason : '');
       entry.el.style.borderColor=node.heat?.color||'#eeeeee';
       entry.el.setAttribute('aria-label',node.title);
     });
   }
+  syncMotionTrails(){
+    const large=this.renderNodes.length>2000,samples=large?4:8;
+    if(!this.motionTrails||this.motionTrails.samples!==samples)this.motionTrails=new MotionTrails({samples,sampleSpacing:large?1.4:1.05,uploadMs:1000/(large?20:30)});
+    const changed=this.motionTrails.sync(this.renderNodes,this.radii,n=>{const c=new THREE.Color(n.heat?.color||'#eeeeee');if(this.mainTag&&!matchesMainTag(n,this.mainTag))c.multiplyScalar(.18);if(this.highlightIds?.size&&!this.highlightIds.has(n.id))c.multiplyScalar(.24);return [c.r,c.g,c.b];});
+    if(changed||!this.trailMesh){
+      this.disposeMesh(this.trailMesh);const geometry=new THREE.InstancedBufferGeometry();
+      geometry.setAttribute('position',new THREE.Float32BufferAttribute([-.5,0,0,.5,0,0,-.5,1,0,.5,1,0],3));geometry.setIndex([0,1,2,2,1,3]);geometry.instanceCount=this.renderNodes.length*this.motionTrails.samples;
+      const points=new THREE.InstancedInterleavedBuffer(this.motionTrails.positions,6).setUsage(THREE.DynamicDrawUsage),colors=new THREE.InstancedInterleavedBuffer(this.motionTrails.colors,8).setUsage(THREE.DynamicDrawUsage);
+      geometry.setAttribute('instanceStart',new THREE.InterleavedBufferAttribute(points,3,0));geometry.setAttribute('instanceEnd',new THREE.InterleavedBufferAttribute(points,3,3));geometry.setAttribute('startColor',new THREE.InterleavedBufferAttribute(colors,4,0));geometry.setAttribute('endColor',new THREE.InterleavedBufferAttribute(colors,4,4));geometry.setAttribute('instanceWidth',new THREE.InstancedBufferAttribute(this.motionTrails.widths,1).setUsage(THREE.DynamicDrawUsage));
+      this.trailMesh=new THREE.Mesh(geometry,new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+        vertexShader:'attribute vec3 instanceStart;attribute vec3 instanceEnd;attribute vec4 startColor;attribute vec4 endColor;attribute float instanceWidth;varying vec4 trailColor;varying float across;void main(){vec4 a=viewMatrix*vec4(instanceStart,1.0);vec4 b=viewMatrix*vec4(instanceEnd,1.0);vec2 delta=b.xy-a.xy;vec2 normal=length(delta)>0.000001?normalize(vec2(-delta.y,delta.x)):vec2(1.0,0.0);vec4 p=mix(a,b,position.y);p.xy+=normal*position.x*instanceWidth;gl_Position=projectionMatrix*p;trailColor=mix(startColor,endColor,position.y);across=position.x;}',
+        fragmentShader:'varying vec4 trailColor;varying float across;void main(){float softness=1.0-smoothstep(0.25,0.5,abs(across));float alpha=trailColor.a*softness;if(alpha<0.001)discard;gl_FragColor=vec4(trailColor.rgb,alpha);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}'
+      }));this.trailMesh.frustumCulled=false;this.trailMesh.renderOrder=0;this.scene.add(this.trailMesh);
+    }
+    this.trailMesh.geometry.attributes.instanceWidth.needsUpdate=true;
+  }
+  updateMotionTrails(now){
+    if(this.motionTrails?.update(this.positions,now)){this.trailMesh.geometry.attributes.instanceStart.data.needsUpdate=true;this.trailMesh.geometry.attributes.startColor.data.needsUpdate=true;}
+  }
+  updateReplayPositions(now){
+    if(!this.layout)return false;
+    if(this.replayPending){
+      const key='venus-expansion:'+this.layoutKey;let previous=replayEpochs.get(key);
+      try{if(typeof sessionStorage!=='undefined')previous=Number(sessionStorage.getItem(key))||previous;}catch{}
+      if(previous!==this.layoutEpoch){this.expansion={start:now,duration:5000};replayEpochs.set(key,this.layoutEpoch);try{if(typeof sessionStorage!=='undefined')sessionStorage.setItem(key,String(this.layoutEpoch));}catch{}}
+      this.replayPending=false;
+    }
+    if(!this.expansion){this.positions=this.layout.positions;return false;}
+    const t=Math.min(1,Math.max(0,(now-this.expansion.start)/this.expansion.duration)),ease=t*t*(3-2*t),origin=this.layout.positions[this.layout.coreId]||this.layout.center||[0,0,0];
+    this.positions=Object.fromEntries(this.nodes.map(n=>[n.id,this.layout.positions[n.id].map((x,k)=>origin[k]+(x-origin[k])*ease)]));
+    if(t===1){this.expansion=null;this.positions=this.layout.positions;}return true;
+  }
   updatePoses() {
     const d = this.pose;
+    let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity,padding=1;
     for (let i = 0; i < this.renderNodes.length; i++) {
       const n = this.renderNodes[i];
-      d.position.fromArray(this.positions[n.id]);
+      const p=this.positions[n.id];
+      minX=Math.min(minX,p[0]);minY=Math.min(minY,p[1]);minZ=Math.min(minZ,p[2]);
+      maxX=Math.max(maxX,p[0]);maxY=Math.max(maxY,p[1]);maxZ=Math.max(maxZ,p[2]);padding=Math.max(padding,this.radii[n.id]);
+      d.position.fromArray(p);
       d.rotation.set(.15,this.layout.spinAngle(n.id),.12);
       d.scale.setScalar(this.radii[n.id]);
       d.updateMatrix();
@@ -1690,7 +1857,11 @@ export class Network {
     }
     if (this.mesh) {
       this.mesh.instanceMatrix.needsUpdate = true;
-      this.mesh.computeBoundingSphere();
+      // One conservative bound collected during the pose upload, reused for
+      // every edge batch. No second per-instance matrix/sphere traversal.
+      this.mesh.boundingSphere||=new THREE.Sphere();
+      if(this.renderNodes.length){this.mesh.boundingSphere.center.set((minX+maxX)/2,(minY+maxY)/2,(minZ+maxZ)/2);this.mesh.boundingSphere.radius=Math.hypot(maxX-minX,maxY-minY,maxZ-minZ)/2+padding;}
+      else this.mesh.boundingSphere.makeEmpty();
     }
     if(this.glow)this.glow.instanceMatrix.needsUpdate=true;
     for (const mesh of this.edgeMeshes || []) {
@@ -1711,7 +1882,8 @@ export class Network {
         mesh.setMatrixAt(i, d.matrix);
       }
       mesh.instanceMatrix.needsUpdate = true;
-      mesh.computeBoundingSphere();
+      mesh.boundingSphere||=new THREE.Sphere();
+      mesh.boundingSphere.copy(this.mesh.boundingSphere);
     }
     if (this.selected && this.positions[this.selected]) {
       this.a.fromArray(this.positions[this.selected]);
@@ -1748,7 +1920,7 @@ export class Network {
   focusMainTag(name){
     const region=mainTagRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,mainTag:name,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});if(!region)return false;
     const center=new THREE.Vector3().fromArray(region.center),direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
-    this.selected=null;this.followPosition=null;this.ring.visible=false;this.overviewActive=false;this.localFocusAnchorId=region.anchorId;this.localFollowPosition=center.clone();this.revealedMainTag=region.anchorId;this.lastLabelCandidates=0;this.setHighlight(region.ids);
+    this.selected=null;this.followPosition=null;this.ring.visible=false;this.overviewActive=false;this.simulationFit=true;this.localFocusAnchorId=region.anchorId;this.localFollowPosition=center.clone();this.revealedMainTag=region.anchorId;this.lastLabelCandidates=0;this.setHighlight(region.ids);
     this.camera.far=Math.max(this.camera.far,region.distance*5);this.camera.updateProjectionMatrix();this.controls.maxDistance=Math.max(this.controls.maxDistance,region.distance*4);
     this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset:direction.multiplyScalar(region.distance),nodeId:region.anchorId,start:performance.now()};this.lastMainTagRegion=region;return true;
   }
@@ -1768,7 +1940,7 @@ export class Network {
       if(!accepted)entry.button.hidden=true;
     }
   }
-  select(id,{smooth=false}={}) {
+  select(id,{smooth=true}={}) {
     const node=this.nodes.find(n=>n.id===id);
     if(node?.isMainTag){this.revealedMainTag=this.revealedMainTag===id?null:id;this.lastLabelCandidates=0;this.onMainTag?.(node.mainTag);return;}
     this.revealedMainTag=null;
@@ -1778,9 +1950,12 @@ export class Network {
     this.localFocusAnchorId=null;this.localFollowPosition=null;
     this.overviewActive=false;
     const target = new THREE.Vector3().fromArray(this.positions[id]);
-    const delta = target.clone().sub(this.controls.target);
-    if(smooth)this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset:this.camera.position.clone().sub(this.controls.target),nodeId:id,start:performance.now()};
-    else{this.focusTransition=null;this.camera.position.add(delta);this.controls.target.copy(target);}
+    const region=nodeFocusRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,nodeId:id,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});
+    const direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
+    const offset=direction.multiplyScalar(region?.distance||Math.max(12,(this.radii[id]||2)*8));
+    this.simulationFit=true;this.camera.far=Math.max(this.camera.far,offset.length()*5);this.camera.updateProjectionMatrix();
+    if(smooth)this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset,nodeId:id,start:performance.now()};
+    else{this.focusTransition=null;this.camera.position.copy(target).add(offset);this.controls.target.copy(target);}
     this.followPosition=target.clone();
     this.ring.position.copy(target);
     this.ring.scale.setScalar((this.radii[id] || 2) + 1.8);
@@ -1793,6 +1968,7 @@ export class Network {
       types: this.types,
       settings: this.settings,
       hidden: this.hidden,
+      visibleRelationTypes:this.visibleRelationTypes,
       visibleIds: this.visibleIds,
       mainTag:this.mainTag,
       layoutEpoch:this.layoutEpoch,
@@ -1820,13 +1996,19 @@ export class Network {
       );
     this.controls.update();
   }
+  setAnimationPaused(paused){const value=this.animationClock.setPaused(paused,performance.now());this.host.dataset.animationPaused=String(value);return value;}
   animate() {
     this.frame = requestAnimationFrame(() => this.animate());
-    if (
-      this.layout &&
-      this.layout.advance((performance.now() - this.last) / 1000)
-    )
-      {this.updatePoses();if(!this.simulationFit){this.fit();this.simulationFit=true;}}
+    if(typeof document!=='undefined'&&document.hidden){this.lastSimulationFrame=performance.now();this.last=this.lastSimulationFrame;this.animationClock.resetFrame(this.last);return;}
+    const frameStart=performance.now(),elapsed=(frameStart-(this.lastSimulationFrame??this.last))/1000;
+    this.lastSimulationFrame=frameStart;
+    const motionElapsed=this.animationClock.sample(frameStart);
+    const advanced=!this.animationClock.paused&&this.layout&&this.layout.advance(motionElapsed);
+    this.simulationMs=performance.now()-frameStart;
+    const poseStart=performance.now();
+    const replaying=!this.animationClock.paused&&this.updateReplayPositions?.(this.animationClock.now);
+    if(advanced||replaying){this.updatePoses();if(!this.simulationFit){const display=this.positions;this.positions=this.layout.positions;this.fit();this.positions=display;this.simulationFit=true;}}
+    this.poseMs=performance.now()-poseStart;
     if(this.overviewActive&&performance.now()-(this.lastOverviewFit||0)>250){this.fit({track:true});this.lastOverviewFit=performance.now();}
     this.controls.update();
     if(this.focusTransition){
@@ -1839,8 +2021,15 @@ export class Network {
     }
     this.updateNavigation();
     if (this.ring.visible) this.ring.quaternion.copy(this.camera.quaternion);
-    this.renderer.render(this.scene, this.camera);
-    this.refreshLabelCandidates(performance.now());
+    if(!this.animationClock.paused)this.updateMotionTrails?.(this.animationClock.now);
+    if(this.glow?.material.uniforms?.viewportHeight)this.glow.material.uniforms.viewportHeight.value=Math.max(1,this.host.clientHeight);
+    const renderStart=performance.now();this.renderer.render(this.scene, this.camera);this.renderMs=performance.now()-renderStart;
+    // Labels are an overlay; their paint cadence need not repeat every WebGL
+    // frame. Selection/hover changes still paint immediately.
+    const labelNow=performance.now(),labelKey=[this.selected,this.hovered,this.revealedMainTag,this.focusEdge,this.hoverEdge].join('|');
+    if(labelNow-(this.lastLabelPaint||0)>=50||labelKey!==this.labelPaintKey){
+    this.lastLabelPaint=labelNow;this.labelPaintKey=labelKey;
+    this.refreshLabelCandidates(labelNow);
     const v = new THREE.Vector3(),
       w = this.host.clientWidth,
       h = this.host.clientHeight;
@@ -1897,11 +2086,12 @@ export class Network {
     }
     let shownReasons = 0;
     for (const { el, edge } of this.edgeLabels || []) {
+      const priority = edge.id === this.focusEdge || edge.id === this.hoverEdge;
+      const connected = edge.from === this.selected || edge.to === this.selected || edge.from === this.hovered || edge.to === this.hovered;
+      if(!priority&&!connected){el.style.display='none';continue;}
       this.a.fromArray(this.positions[edge.from]);
       this.b.fromArray(this.positions[edge.to]);
       this.direction.copy(this.a).lerp(this.b,0.5).applyMatrix4(this.camera.matrixWorldInverse);
-      const priority = edge.id === this.focusEdge || edge.id === this.hoverEdge;
-      const connected = edge.from === this.selected || edge.to === this.selected || edge.from === this.hovered || edge.to === this.hovered;
       const detail = labelDetail({depth:-this.direction.z, radius:Math.min(this.radii[edge.from],this.radii[edge.to]), height:h, fov:this.camera.fov, priority});
       el.style.fontSize = Math.min(11,detail.fontSize) + 'px';
       el.style.opacity = detail.opacity;
@@ -1947,6 +2137,7 @@ export class Network {
       el.style.left = x + "px";
       el.style.top = y + "px";
     }
+    }
     const now = performance.now();
     if (
       this.layout &&
@@ -1965,6 +2156,7 @@ export class Network {
         nodes: this.renderNodes?.length || 0,
         totalNodes: this.nodes?.length || 0,
         layoutSteps: this.layout?.steps || 0,
+        runtimeMetrics:{simulationMs:this.simulationMs,poseMs:this.poseMs,renderMs:this.renderMs,collision:this.layout?.bodyAvoidanceStats,stepCosts:this.layout?.stepCosts},
         edges: this.visibleEdges || 0,
         camera: this.camera.position.toArray(),
         target: this.controls.target.toArray(),
@@ -1975,6 +2167,7 @@ export class Network {
     }
   }
   dispose() {
+    document.removeEventListener('visibilitychange',this.visibilityClock);
     clearTimeout(this.labelClickTimer);
     cancelAnimationFrame(this.frame);
     this.resize.disconnect();
@@ -1987,6 +2180,7 @@ export class Network {
     this.renderer.domElement.removeEventListener("pointerleave", this.leave);
     this.disposeMesh(this.mesh);
     this.disposeMesh(this.glow);
+    this.disposeMesh(this.trailMesh);
     for (const m of this.edgeMeshes || []) this.disposeMesh(m);
     this.ring.geometry.dispose();
     this.ring.material.dispose();

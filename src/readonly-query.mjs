@@ -71,5 +71,7 @@ export function createReadQuery(store){
    for(const field of ['tags','aliases','projects'])if(field in input){const list=input[field];if(!Array.isArray(list)||list.length>16)fail('每类辅助标签最多 16 项');const unique=new Map();for(const x of list){if(!x||typeof x.name!=='string'||!x.name.trim()||x.name.length>80||typeof x.quote!=='string'||!x.quote||x.quote.length>1600||(!(n.body||'').includes(x.quote)&&!n.title.includes(x.quote)))fail('辅助检索信息须附现有正文或标题中的定位原句');unique.set(normal(x.name),{name:x.name.trim(),quote:x.quote,reason:String(x.reason||'').slice(0,500)});}entry[field]=[...unique.values()];}
    const state=loadAux();state.entries[n.id]=entry;state.version++;if(auxFile){const temp=auxFile+'.tmp';fs.mkdirSync(path.dirname(auxFile),{recursive:true});fs.writeFileSync(temp,JSON.stringify(state,null,2));fs.renameSync(temp,auxFile);auxSignature=null;}index.delete(n.id);return {node:brief(n),auxiliary:entry,contentChanged:false,mainClassificationChanged:false};
  };
+ read.indexVault=id=>{const n=store.nodes.find(n=>n.id===id&&n.kind==='vault'&&!n.mergedInto);if(!n)fail('资料不存在',404);loadAux();indexed(n);return {sourceId:id,sourceHash:n.hash,searchable:true,characters:n.body.length};};
+ read.indexStatus=id=>{const n=store.nodes.find(n=>n.id===id),e=index.get(id);return !!n&&!!e&&e.hash===n.hash&&e.body===n.body;};
  return read;
 }
