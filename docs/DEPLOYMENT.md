@@ -38,7 +38,7 @@ npm ci
 npm run build
 ```
 
-npm ci uses package-lock.json. Network access may be needed to download dependencies. Do not copy another user's node_modules, data, caches, credentials or personal environment. Original dependency notices are retained in third-party-licenses. No project open-source license has been granted yet.
+npm ci uses package-lock.json. Network access may be needed to download dependencies. Do not copy another user's node_modules, data, caches, credentials or personal environment. Venus is available under the [MIT License](../LICENSE); original dependency notices are retained in third-party-licenses and remain applicable to their respective components.
 
 ## First run: no analysis charges from retrieval
 

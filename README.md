@@ -143,7 +143,11 @@ All eleven captures, including import, editing and the four networks, are in [do
 
 Back up your entire `data/` directory privately. Per-document version history retains private text. New full-table historical snapshots of classifications and relations are disabled; current tables still save normally. Existing historical files are not automatically deleted by this release. This publication tree excludes personal Vault, knowledge, skills, history, source exports, evidence, logs, credentials, private configuration and prior Git history.
 
-**No project open-source license has been selected.** Source visibility alone grants no general permission to use, modify or redistribute. No general open-source grant is made by this release. Third-party notices are retained in [third-party-licenses](third-party-licenses/); see [license status](docs/LICENSE-STATUS.md).
+Venus is licensed under the [MIT License](LICENSE), copyright (c) 2026 NowYouKnowShen. You may use, modify, and redistribute the software subject to its notice requirements. It is provided without warranty. Third-party components retain their own licenses and notices in [third-party-licenses](third-party-licenses/); see [license details](docs/LICENSE-STATUS.md). The project license does not grant rights to private user material or third-party content you import.
+
+## Community
+
+See [Contributing](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), [Security](SECURITY.md), and [Support](SUPPORT.md). Use the [bug and feature templates](https://github.com/shenhang24/venus/issues/new/choose) for public reports. This is an early-stage personal project with best-effort maintenance and no guaranteed response times. Share only synthetic examples and redacted diagnostics; never post private Vault content or credentials.
 
 Keeping original material, sources and relationships can allow a stronger, interface-compatible analyzer to improve organization later, even if the application stays the same. This requires a deliberate analyzer change and is not an automatic upgrade or a guarantee of accuracy.
 

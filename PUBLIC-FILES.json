@@ -20,6 +20,21 @@
       "sha256": "ddf06847d34e2846446657e47d85d3aa6716544df261cc513e18266b446dc943"
     },
     {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "sha256": "f1a4bd8a741f44d2279a4fe93a65f42b62d01068ef575988d0b0a55e1471de18",
+      "bytes": 984
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.md",
+      "sha256": "c7c1876b51ee38f4b45565c3a1fede4bb0e92f6ccf6b32f59e28cae87443e54c",
+      "bytes": 657
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "sha256": "38f863887de22e6eb461c0002fe72b148d886119809ae51f14932585f6ce2ba8",
+      "bytes": 867
+    },
+    {
       "path": ".github/workflows/release.yml",
       "bytes": 667,
       "sha256": "faf391ed0c1c1e92d2e000d7552d6c6effa87426aa5e66975903bf0c30f3076b"
@@ -35,14 +50,29 @@
       "sha256": "ebecf8a093281d87f0165b332f08d707181a9cd4674dbbf20fa2bf869ad6242f"
     },
     {
+      "path": "CODE_OF_CONDUCT.md",
+      "sha256": "346ef4b326eee9594daa61e02b4f20c5b9edb5866d72e9671f97817188f44cff",
+      "bytes": 1255
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "ba41caaef92b0de95773bdbf3cd0bcc7f1db5f767e120c68aff7a204da19afb0",
+      "bytes": 2305
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "706727569133a1a1cb49b82eda901ddd36e953fc9241bfb00f583a93b5e2bbb2",
+      "bytes": 1071
+    },
+    {
       "path": "PUBLIC-DOCUMENTS.json",
-      "bytes": 604,
-      "sha256": "9df80bd6f1385b7a0771764b49eab1f8487d13dbfc751a1fe8ee3a0ec004529d"
+      "bytes": 838,
+      "sha256": "866ec586cb6139c16c71a1fe72d38d2ef1acab8814a2dfb2928d091a1db288f0"
     },
     {
       "path": "README.md",
-      "bytes": 19616,
-      "sha256": "f308e8725376c04a7c32884a7fb3148f3b7804f55d15006cd0bf366646fe64ab"
+      "bytes": 20227,
+      "sha256": "8755126a4b42518185048438cd7f14d134dfd32afa755163816153c063034127"
     },
     {
       "path": "RELEASE-NOTES.md",
@@ -58,6 +88,16 @@
       "path": "Restart-Venus.ps1",
       "bytes": 1150,
       "sha256": "1ba2f3f78ccb608bb6cd45ae70e766a117c3676c83fd7b72be3579e687379148"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "2d2eaa6da693893a23ad6c1de4d0bd3acb94b95ce545a135251c347fc47d723c",
+      "bytes": 1474
+    },
+    {
+      "path": "SUPPORT.md",
+      "sha256": "6ce45fadeeae0bda9ccae9389720032d56af227dc240b26eebb884ddacf60a1d",
+      "bytes": 1251
     },
     {
       "path": "Start-Venus.cmd",
@@ -136,8 +176,8 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "bytes": 18023,
-      "sha256": "153c7ae5a7e0a2074a4195704b6bab7a3aae1bb4d7d3623dc5d45278a44aeee9"
+      "bytes": 18079,
+      "sha256": "4af62e4d211f82553e55f9b3de551276b2531cbc979e4f64461b2da1c11af97b"
     },
     {
       "path": "docs/INTEGRATIONS.md",
@@ -146,8 +186,8 @@
     },
     {
       "path": "docs/LICENSE-STATUS.md",
-      "bytes": 1272,
-      "sha256": "bf20ab8669a058c3547502a7127056865f91002e18e4c88569c02c67ccafaba7"
+      "bytes": 1415,
+      "sha256": "14ec3bdae3f4afe32a5c559b5b5287d8be1a4eb47bdcf51d2c1ae56e73385b67"
     },
     {
       "path": "docs/PAGE-TOUR.md",
@@ -231,13 +271,13 @@
     },
     {
       "path": "package-lock.json",
-      "bytes": 1513,
-      "sha256": "0ad0f0a74ae5a59b24552ae13f0ed8992b514a7e9bc81b89eabf5babd76b0eb0"
+      "bytes": 1537,
+      "sha256": "dda628e1ccc2885c0daa4c553fda1a028cf4f05f58c87b3b89ee784ee251e693"
     },
     {
       "path": "package.json",
-      "bytes": 356,
-      "sha256": "697ec00d0e89fcf02641232244857ffe0437b2abdce8beaf4be36d42caefd934"
+      "bytes": 376,
+      "sha256": "e3a56e9e17a19ddb9affbded274d61723c295b3c5d81aac159b8082d789ee636"
     },
     {
       "path": "public/app.js",
