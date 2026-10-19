@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publicationLanguage": "en",
   "canonicalReadme": "README.md",
   "publicDocuments": [
@@ -17,6 +17,7 @@
     "SUPPORT.md",
     "THIRD-PARTY-NOTICES.md",
     "UI-LANGUAGE.md",
+    "UPDATE-NOTES-0.6.0.md",
     "UPDATE-NOTES-2026-10-19.md",
     "codex-plugin/QUERY.md",
     "codex-plugin/skills/venus-analyze/SKILL.md",
@@ -28,6 +29,7 @@
     "docs/PAGE-TOUR.md",
     "docs/PRIVACY.md",
     "docs/RELEASE-REVIEW.md",
+    "docs/SCREENSHOTS-0.6.0.md",
     "examples/sample-conversation.md",
     "examples/sample.md",
     "templates/concept.md"

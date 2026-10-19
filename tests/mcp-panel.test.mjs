@@ -13,9 +13,9 @@ test('the actual MCP dialog renderer opens a masked input and enabled start/refr
  const source=fs.readFileSync(new URL('../public/app.js',import.meta.url),'utf8'),{elements,calls}=await renderMcpPanel(source);
  assert.equal(elements.get('modal').open,true);assert.equal(elements.get('modal-title').textContent,'MCP 连接');assert.equal(elements.get('tunnel-key').attributes.type,'password');assert.equal(elements.get('tunnel-key').attributes.autocomplete,'off');
  for(const id of ['tunnel-start','tunnel-refresh']){assert.equal(typeof elements.get(id).onclick,'function');assert.equal(elements.get(id).hidden,false);assert.equal(elements.get(id).disabled,false);}
- assert.equal(elements.get('tunnel-id').value,'tunnel_6ad337c0ac7081918aa89f6eba324024');assert.equal(elements.get('tunnel-stop').disabled,true);
+ assert.equal(elements.get('tunnel-id').value,'');assert.equal(elements.get('tunnel-stop').disabled,true);
  assert.ok(calls.every(c=>c.url.startsWith('/api/mcp-control/')));assert.equal(calls[0].url,'/api/mcp-control/status');
- elements.get('tunnel-key').value='synthetic-runtime-key';await elements.get('tunnel-start').onclick();assert.equal(elements.get('tunnel-key').value,'');assert.ok(calls.some(c=>c.url==='/api/mcp-control/start'));
+ elements.get('tunnel-id').value='tunnel_synthetic_example';elements.get('tunnel-key').value='synthetic-runtime-key';await elements.get('tunnel-start').onclick();assert.equal(elements.get('tunnel-key').value,'');assert.ok(calls.some(c=>c.url==='/api/mcp-control/start'));
 });
 test('same-origin MCP routes work without expanding CSP and retain cross-site write rejection',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'venus-mcp-panel-')),calls=[];
@@ -23,7 +23,7 @@ test('same-origin MCP routes work without expanding CSP and retain cross-site wr
  const base='http://127.0.0.1:'+app.address().port;
  const page=await fetch(base+'/');assert.match(page.headers.get('content-security-policy'),/connect-src 'self';/);assert.match(await page.text(),/id="mcp-connect-open"/);
  assert.equal((await fetch(base+'/api/mcp-control/status')).status,200);
- const options={method:'POST',headers:{Origin:'http://127.0.0.1:10001','Content-Type':'application/json','X-Venus-Token':'synthetic-nonce'},body:JSON.stringify({key:'synthetic-runtime-key',tunnelId:'tunnel_6ad337c0ac7081918aa89f6eba324024'})};
+ const options={method:'POST',headers:{Origin:'http://127.0.0.1:10001','Content-Type':'application/json','X-Venus-Token':'synthetic-nonce'},body:JSON.stringify({key:'synthetic-runtime-key',tunnelId:'tunnel_synthetic_example'})};
  assert.equal((await fetch(base+'/api/mcp-control/start',options)).status,200);assert.equal(calls.at(-1).options.token,'synthetic-nonce');
  assert.equal((await fetch(base+'/api/mcp-control/start',{...options,headers:{...options.headers,Origin:'https://attacker.example'}})).status,403);
  for(const name of fs.readdirSync(root,{recursive:true})){const file=path.join(root,name);if(fs.statSync(file).isFile())assert.ok(!fs.readFileSync(file,'utf8').includes('synthetic-runtime-key'));}

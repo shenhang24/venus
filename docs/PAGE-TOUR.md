@@ -5,3 +5,7 @@ Vault lists original Markdown files and preserves source text. AI Knowledge pres
 Open a record to read, follow a source to Vault, or edit derived content. Import explicitly supplied Markdown through the import dialog. Four networks support rotation, zoom, node focus, relation filtering and content navigation. Demonstration results in the included images are synthetic samples, not live model output.
 
 Actual English captures: Vault (01), AI Knowledge (02), AI Skills (03), Concept Cloud (04), their networks (05-08), import (09), editor (10), saved result (11). See [images](images).
+
+## Current 0.6.0 views
+
+The screenshots above document the earlier interface. See [the new English synthetic gallery](SCREENSHOTS-0.6.0.md) for project-primary knowledge organization, selective detail in all four networks, thirteen Vault color tiers, logs and dialogs. Overview keeps roots and loose nodes; select or locate to expand a branch. Fit all or clear selection collapses it; zoom does not expand. Hidden orbital nodes stop computing, and pause state survives view changes.

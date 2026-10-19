@@ -15,20 +15,20 @@ test('重复消息 ID 和纯寒暄不增加热度，重复关键词不改变颜�
   assert.equal(deriveHeat([a]).get('v').level,0);
   assert.equal(deriveHeat([b]).get('v').level,0);
 });
-test('山河扇项目基准优先，依据链可继承，无关提及不升金',()=>{
-  const v=vault('v',msg('1','17','准备实现'), '接手山河扇未完成任务');
+test('ExampleProject项目基准优先，依据链可继承，无关提及不升金',()=>{
+  const v=vault('v',msg('1','17','准备实现'), '接手ExampleProject未完成任务');
   const k={id:'k',kind:'knowledge',title:'战斗设计',body:'设计知识',sources:[{id:'v',quote:'准备实现'}]};
   const s={id:'s',kind:'skill',title:'能力分析',body:'技能',sources:[{id:'k',quote:'设计知识'}]};
-  const unrelated=vault('u',msg('2','17','偶尔提到山河扇'), '早餐做法');
-  const h=deriveHeat([v,k,s,unrelated]);
-  for(const id of ['v','k','s']){assert.equal(h.get(id).level,5);assert.equal(h.get(id).basis,'user-project');}
+  const unrelated=vault('u',msg('2','17','偶尔提到ExampleProject'), '早餐做法');
+  const h=deriveHeat([v,k,s,unrelated],{rules:[{id:'example-priority',name:'ExampleProject',level:5,terms:['ExampleProject'],reason:'Synthetic explicit priority fixture'}]});
+  for(const id of ['v','k','s']){assert.equal(h.get(id).level,id==='v'?12:5);assert.equal(h.get(id).basis,'user-project');}
   assert.equal(h.get('u').level,0);
 });
 test('派生知识只统计被引消息，不继承长对话的所有活动',()=>{
   const v=vault('v',Array.from({length:20},(_,i)=>msg('m'+i,String(1+i%5).padStart(2,'0'),'讨论'+i)).join(''));
   const k={id:'k',kind:'knowledge',title:'独立知识',body:'知识',sources:[{id:'v',quote:'讨论0'}]};
   const h=deriveHeat([v,k]);
-  assert.equal(h.get('v').level,5);assert.equal(h.get('k').level,0);
+  assert.equal(h.get('v').level,12);assert.equal(h.get('k').level,0);
   assert.equal(h.get('k').userTurns,1);
 });
 

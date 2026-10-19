@@ -157,3 +157,7 @@ After updating source, install the matching lockfile dependencies with npm ci an
 Version 0.4.0 includes the program, deployment files, locked dependency definitions, synthetic examples, templates, targeted tests, retained dependency notices and English synthetic-demo screenshots. Install dependencies with npm ci before starting. No private data, credentials, remote tunnel profiles or background analysis allowance is bundled. Existing private data must stay outside public version control.
 
 Optional tunnel controller source uses YOUR_TUNNEL_ID as an unconfigured placeholder. A compatible client and the user's own profile are separate prerequisites; cloud connectivity has not been verified by this release. Local retrieval does not require a tunnel.
+
+## Public Tunnel configuration
+
+No account-specific Tunnel ID or private profile is shipped. Configure your own official Tunnel client/profile separately and set `VENUS_TUNNEL_ID` for the local control process. Enter that same ID in the MCP connection dialog; runtime keys remain in memory and are not saved. This package does not provision a Tunnel or claim that platform registration has succeeded.

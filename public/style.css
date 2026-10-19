@@ -1594,3 +1594,5 @@ dialog { width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-he
 #toast,#action-feedback { padding:10px 14px;line-height:1.55;overflow-wrap:anywhere;max-width:min(520px,calc(100vw - 32px)); }
 #modal-form > #action-feedback { margin:0 var(--dialog-gutter) var(--dialog-gutter);max-width:calc(100% - 2 * var(--dialog-gutter)); }
 @media(max-width:540px) { .two-col { grid-template-columns:minmax(0,1fr); }.dialog-actions { gap:8px; } }
+.knowledge-project-controls { display:flex;flex-wrap:wrap;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line); }
+.knowledge-project-controls label.field { flex:1;min-width:180px;margin:0; }

@@ -3,14 +3,14 @@ const tours=fs.readFileSync(new URL('../public/shared-tours.js',import.meta.url)
 const avoidance=fs.readFileSync(new URL('../public/body-avoidance.js',import.meta.url),'utf8');
 const layout=tours+'\n'+avoidance+'\n'+fs.readFileSync(new URL('../public/layout.js',import.meta.url),'utf8').replace("import {configureSharedTours,advanceSharedTours} from './shared-tours.js';",'').replace("import {resolveBodyAvoidance} from './body-avoidance.js';",'');
 const motionTrails=fs.readFileSync(new URL('../public/motion-trails.js',import.meta.url),'utf8');
-const view=fs.readFileSync(new URL('../src/graph-view.js',import.meta.url),'utf8').replace('import { NetworkAnimationClock } from "/animation-clock.js";',fs.readFileSync(new URL('../public/animation-clock.js',import.meta.url),'utf8'));
+const view=fs.readFileSync(new URL('../src/graph-view.js',import.meta.url),'utf8').replace('import { NetworkAnimationClock } from "/animation-clock.js";',fs.readFileSync(new URL('../public/animation-clock.js',import.meta.url),'utf8')).replace('import { branchVisibility, aggregateDisplayRadius, radiusTransition } from "/branch-visibility.js";',fs.readFileSync(new URL('../public/branch-visibility.js',import.meta.url),'utf8'));
 const marker='import { AffinityLayout } from "/layout.js";';
 const labels=fs.readFileSync(new URL('../public/network-labels.js',import.meta.url),'utf8');
 const labelMarker='import { shortNodeLabel, labelDetail, labelLimits, showNodeLabel } from "/network-labels.js";';
 const controls=fs.readFileSync(new URL('../public/network-controls.js',import.meta.url),'utf8');
 const controlsMarker='import { configureNetworkControls, followSelectedPosition, overviewDistance, mainTagRegion, nodeFocusRegion } from "/network-controls.js";';
 const taxonomy=fs.readFileSync(new URL('../public/taxonomy.js',import.meta.url),'utf8');
-const mainTags=taxonomy+'\n'+fs.readFileSync(new URL('../public/main-tags.js',import.meta.url),'utf8').replace("import {nodeRadiusFactor} from './layout.js';",'').replace("import {nodeTagHierarchy,tagHierarchy} from './taxonomy.js';",'');
+const mainTags=taxonomy+'\n'+fs.readFileSync(new URL('../public/vault-heat.js',import.meta.url),'utf8')+'\n'+fs.readFileSync(new URL('../public/main-tags.js',import.meta.url),'utf8').replace("import {nodeRadiusFactor} from './layout.js';",'').replace("import {nodeTagHierarchy,tagHierarchy} from './taxonomy.js';",'').replace("import {VAULT_HEAT_LEVELS} from './vault-heat.js';",'');
 const mainTagMarker='import { buildMainTagGraph, matchesMainTag, effectiveDegrees, displayedRadius } from "/main-tags.js";';
 if(!view.includes(marker))throw Error('Graph layout import marker missing');
 if(!view.includes(labelMarker))throw Error('Graph labels import marker missing');

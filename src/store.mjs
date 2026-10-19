@@ -736,6 +736,7 @@ export class Store {
     const rel = ".venus/classifications.md",
       file = path.join(this.root, rel);
     this.classifications[id] = {
+      ...this.classifications[id],
       summary: summary.trim(),
       tags: normalized,
       sourceHash: n.hash,

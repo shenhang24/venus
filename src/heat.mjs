@@ -1,3 +1,4 @@
+import {vaultActivityHeat} from '../public/vault-heat.js';
 export const HEAT_LEVELS = [
   {name:'白色',color:'#eeeeee',label:'单次使用'},
   {name:'绿色',color:'#63cf8b',label:'多轮跟进'},
@@ -6,8 +7,7 @@ export const HEAT_LEVELS = [
   {name:'橙色',color:'#f5a451',label:'持续投入'},
   {name:'金色',color:'#f3ce60',label:'长期重点'},
 ];
-export const DEFAULT_HEAT_RULES = [{id:'shanhefan',name:'山河扇',level:5,
-  terms:['山河扇','ShanheFan'],reason:'用户指定：现在的山河扇项目可标为金色。'}];
+export const DEFAULT_HEAT_RULES = [];
 const dayFormat = new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'});
 function dayOf(value){
   if (!value) return null;
@@ -84,9 +84,10 @@ export function deriveHeat(nodes,{cache=new Map(),rules=DEFAULT_HEAT_RULES}={}){
     const count=n.kind==='vault'?userTurns:Math.max(userTurns,vaults.size);
     const automatic=activityLevel(count,days.size,vaults.size),level=project?project.level:automatic;
     const style=HEAT_LEVELS[level];
-    results.set(n.id,{level,...style,userTurns,activeDays:days.size,sourceConversations:vaults.size,
+    const heat={level,...style,userTurns,activeDays:days.size,sourceConversations:vaults.size,
       basis:project?'user-project':'source-activity',project:project?.name||null,
-      reason:project?project.reason:`${userTurns} 条用户跟进，${days.size} 个讨论日期，${vaults.size} 份来源对话；按引用定位，未用字数或关键词出现次数计分。`});
+      reason:project?project.reason:`${userTurns} 条用户跟进，${days.size} 个讨论日期，${vaults.size} 份来源对话；按引用定位，未用字数或关键词出现次数计分。`};
+    results.set(n.id,n.kind==='vault'?vaultActivityHeat(heat):heat);
   }
   for(const id of cache.keys())if(!byId.has(id))cache.delete(id);
   return results;

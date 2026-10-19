@@ -1,23 +1,25 @@
-# Venus 0.5.0
+# Venus 0.6.0
 
-Venus now processes currently saved material and user edits without repeatedly comparing completed outputs against older conversations. Local fingerprints and coverage records skip unchanged completed segments, including zero-concept results. The cancelled semantic review entry point cannot launch model workers. Existing results and checkpoints are retained.
+## Project organization and selective network detail
 
-## New and fixed
+AI knowledge now uses project identities shared by its directory and network. Existing source mappings, explicit metadata and branch lineage group continuations into the same project primary category. Topic subcategories and cross-project themes remain available. Manual membership wins, same-name projects retain separate identities, and ambiguous material remains unassigned. Sources and user edits are preserved; this does not regenerate the knowledge library.
 
-- Independent source-layer processing, provider entry controls, and pause/resume for all four network animations.
-- Truthful runtime activity across normal extraction, historical gaps and independent layers; deferred failures retain unresolved gaps. Inline retry, skip and continue controls retain traceability.
-- Temporary-to-persistent identifier mapping, structured execution journals, and bounded recovery of failed work.
-- Real provider/model token receipts with deduplication and cache semantics; the latest request's average output rate includes waiting and transport and is not live streaming throughput.
-- Current-material input boundaries: user-edited content remains authoritative input, references provide traceability, and source instructions never grant execution permission.
-- Consistent field, editor, dialog and floating-panel padding, line spacing, wrapping and scrolling. Long dialog bodies stay within the viewport while actions remain visible; late English captions now translate correctly.
-- English architecture diagram, detailed update notes and a synthetic long-text spacing screenshot.
+All four networks now show category roots and ungrouped floating nodes in overview. Selecting a root or node expands only its branch. Locate can reveal a hidden target; clearing selection, background click and Fit all collapse detail. Zoom alone never expands the library. Hidden descendants are omitted from rendered instances and active orbital, collision and shared-tour computation; their positions and clocks freeze. Reopening does not catch up hidden elapsed time. Pause state remains intact.
 
-## Validation and package
+Collapsed aggregate volume follows unique contained content nodes, with a cube-root conversion to display radius and no tenfold aggregate cap. Expanded detail restores the original individual sizing and cap. Appearance and size transition smoothly; display radius does not change physical orbit spacing, collision radii or camera fit.
 
-45 related checks passed for extraction coverage, material boundaries, status and usage instrumentation; 3 locale checks passed for the final UI change. The synthetic 1280×720 dialog check verified scrolling, no horizontal overflow and visible actions. No live model call was made solely for validation.
+Vault has thirteen stable activity color tiers, with intermediate colors added to its existing progression and a matching legend. Scores still use substantive activity, days and source evidence. This does not turn orbital hierarchy into thirteen levels or change the other three networks' six-color palettes.
 
-The public package contains reviewed source, documentation, synthetic demos and licenses only. Private sources and generated content, histories, credentials, configuration, runtime logs, usage receipts, personal checkpoints and screenshots are excluded. Existing MIT/community documents and third-party notices are retained.
+## Token-use observation
 
-Install with `npm ci` and `npm run build`. For a local viewing session, set `VENUS_ANALYSIS=0` before starting. Select providers and budgets deliberately. Existing in-flight calls retain their original input until the runner reloads normally; no private data migration or forced analysis restart is required for packaging.
+The maintainer estimates that token use in this round was roughly one tenth of the older workflow, or about 90% lower. This is an informal observation, not a controlled benchmark, exact comparison or guarantee for other tasks. Repeated semantic reviews were removed, and local fingerprints skip unchanged completed ranges, including valid zero-concept results. Actual savings depend on changed input, coverage gaps, provider and model. No extra model calls or comparison runs were made to validate this estimate.
 
-See [architecture](docs/ARCHITECTURE.md) and [detailed update notes](UPDATE-NOTES-2026-10-19.md).
+## Screenshots, validation and boundaries
+
+Fifteen new actual browser screenshots use only isolated synthetic English notes and project metadata, with no live analysis calls. They show four content pages, overview and selected detail in all four networks, logs, import and connection dialogs. The receipt records 1280×720 capture, node counts and visible/active counts. Captures retain the development base-version footer (0.3.6); the feature code is this release candidate. See [screenshots](docs/SCREENSHOTS-0.6.0.md).
+
+56 targeted checks passed, with no unresolved failure. Browser checks covered all four networks, hidden-target locate, cancel, zoom while paused, project grouping and empty intersections. The merged public package is built separately. These checks do not certify every private-library scale or every repository test.
+
+The private processing service was not restarted and gap extraction was not interrupted. Refreshed frontend project organization, branch visibility and Vault colors are loaded. Backend classification-metadata preservation and heat derivation become active at the next normal backend load; an in-flight model retains its existing input. No full-library re-extraction, repeated content review or external fact checking is introduced.
+
+The public package excludes private material, project catalogs, account-specific tunnel identifiers, priority overrides, configuration, history, operational logs and personal images. Install with `npm ci` and `npm run build`; for viewing without automatic analysis, set `VENUS_ANALYSIS=0` before starting. See [architecture](docs/ARCHITECTURE.md) and [deployment](docs/DEPLOYMENT.md).

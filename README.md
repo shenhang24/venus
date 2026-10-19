@@ -63,7 +63,7 @@ Continuous hierarchical orbits, bounded trails and exterior transfer channels sh
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.5.0**. See [changes](CHANGELOG.md).
+Current release: **0.6.0**. See [changes](CHANGELOG.md).
 
 ## Install and start
 
@@ -176,3 +176,11 @@ Basic local reading and editing require no model credentials. Codex analysis use
 This release adds independent layer controls and network pause/resume, truthful activity and exception recovery, current-material incremental extraction, and provider usage receipts. The bottom status bar reports returned token counters and the latest request's average output rate, including waiting and transport; it does not claim live streaming throughput. Unavailable counters remain unavailable.
 
 Text fields, editors, dialogs and floating panels now have consistent padding, line spacing and wrapping. Long dialog content scrolls independently while actions stay visible. The [synthetic spacing example](docs/images/12-dialog-spacing.png) uses no personal material. Existing English demo screenshots remain illustrative and may predate these controls.
+
+## 0.6.0: projects and focused network detail
+
+Knowledge directories and networks share project-primary categories from reliable metadata and branch lineage. Topic subcategories remain usable across projects; uncertain ownership stays unassigned. Overview renders category roots plus loose nodes; selecting or locating a target reveals one branch, and clearing selection collapses it. Hidden descendants stop orbital computation. Aggregated overview volume and original detail sizing are separate, without changing orbit spacing or camera fit. Vault alone now has thirteen stable activity colors.
+
+The maintainer estimates this round used roughly one tenth of the older workflow's tokens (about 90% less), due to removing repeated semantic reviews and locally skipping unchanged completed content. This is an informal observation, not a benchmark or guarantee. No model calls were made to validate it.
+
+[Full changes and limitations](UPDATE-NOTES-0.6.0.md) · [15 current synthetic English screenshots](docs/SCREENSHOTS-0.6.0.md)

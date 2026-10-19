@@ -5,6 +5,7 @@ import { heatText } from "/i18n.js";
 import { shortNodeLabel, labelDetail, labelLimits, showNodeLabel } from "/network-labels.js";
 import { configureNetworkControls, followSelectedPosition, overviewDistance, mainTagRegion, nodeFocusRegion } from "/network-controls.js";
 import { buildMainTagGraph, matchesMainTag, effectiveDegrees, displayedRadius } from "/main-tags.js";
+import { branchVisibility, aggregateDisplayRadius, radiusTransition } from "/branch-visibility.js";
 const layoutSessions = new Map();
 const replayEpochs = new Map();
 import * as THREE from "three";
@@ -20,7 +21,7 @@ export function raycastProceduralStars(raycaster,hits){
 export class Network {
   constructor(
     host,
-    { onSelect, onOpen, onEdge, onStats, layoutKey, onCheckpoint, onMainTag },
+    { onSelect, onOpen, onEdge, onStats, layoutKey, onCheckpoint, onMainTag, onClearSelection },
   ) {
     this.layoutKey = layoutKey || "network";
     this.onCheckpoint = onCheckpoint;
@@ -35,6 +36,7 @@ export class Network {
     this.onEdge = onEdge;
     this.onStats = onStats;
     this.onMainTag=onMainTag;
+    this.onClearSelection=onClearSelection;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#000000");
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.1, 8000);
@@ -90,6 +92,7 @@ export class Network {
         this.focusEdge = hit.edge.id;
         this.onEdge(hit.edge);
       }
+      else this.fit();
     };
     this.double = (e) => {
       const hit = this.pick(e);
@@ -141,6 +144,8 @@ export class Network {
     m.material.dispose();
   }
   update({ nodes, edges, positions, types, settings, hidden, visibleRelationTypes=null,visibleIds, mainTag=this.mainTag,layoutEpoch=0 }) {
+    this.updateInput={nodes,edges,positions,types,settings,hidden,visibleRelationTypes,visibleIds,mainTag,layoutEpoch};
+    const oldRadii=this.radii||{},oldVisible=new Set((this.renderNodes||[]).map(n=>n.id));
     const syntheticBenchmark=nodes[0]?.id?.startsWith('bench-');
     const grouped=buildMainTagGraph(nodes.filter(n=>!n.isMainTag),edges.filter(e=>!e.semanticAnchor),positions,settings.distance);
     nodes=grouped.nodes;edges=grouped.edges;positions=grouped.positions;this.mainTag=mainTag||null;
@@ -161,6 +166,8 @@ export class Network {
       growth: settings.growth??.01,
       baseRadius:settings.baseRadius,
     });
+    this.branchState=branchVisibility(nodes,edges,this.layout.orbits,this.branchSelection,visibleIds);
+    this.layout.setActiveNodes(this.branchState.visibleIds);
     // Place new/grown spheres safely before exposing their first rendered frame.
     if(this.layout.signature!==previousLayoutSignature&&!this.animationClock.paused)this.layout.step();
     positions = this.layout.positions;
@@ -168,9 +175,8 @@ export class Network {
     this.updateReplayPositions(this.animationClock.now);
     this.nodeById=new Map(nodes.map(n=>[n.id,n]));
     this.visibleIds = visibleIds;
-    this.renderNodes = visibleIds
-      ? nodes.filter((n) => visibleIds.has(n.id))
-      : nodes;
+    this.renderNodes = nodes.filter(n=>this.branchState.visibleIds.has(n.id));
+    this.host.dataset.visibleNodes=String(this.renderNodes.length);this.host.dataset.totalNodes=String(nodes.length);this.host.dataset.activeNodes=String(this.layout.activeNodes.length);this.host.dataset.branchSelection=this.branchSelection||'';
     this.edges = edges;
     this.positions = positions;
     this.types = types;
@@ -183,6 +189,7 @@ export class Network {
     this.edgeMeshes = [];
     const degree = effectiveDegrees(edges);
     this.radii = {};
+    this.detailRadii={};this.radiusTweens=new Map();this.radiusTweenStart=performance.now();
     this.degree = degree;
     const dummy = new THREE.Object3D();
     const pointStars=this.renderNodes.length>2000;
@@ -241,7 +248,10 @@ export class Network {
     );
     this.glow.renderOrder=1;
     this.renderNodes.forEach((n, i) => {
-      const r = displayedRadius(n,settings,degree[n.id]||0);
+      const detail=displayedRadius(n,settings,degree[n.id]||0);this.detailRadii[n.id]=detail;
+      const count=this.branchState.aggregateCounts.get(n.id),target=count===undefined?detail:aggregateDisplayRadius(settings.baseRadius,count);
+      const r=oldVisible.has(n.id)?oldRadii[n.id]??target:(oldVisible.size ? .001 : target);
+      if(Math.abs(r-target)>1e-7)this.radiusTweens.set(n.id,{from:r,to:target});
       this.radii[n.id] = r;
       dummy.position.fromArray(positions[n.id]);
       dummy.scale.setScalar(r);
@@ -365,8 +375,8 @@ export class Network {
       this.ring.visible = false;
     }
     if (!this.initialFit && nodes.length) {
-      this.fit();
       this.initialFit = true;
+      this.fit({track:true});
     }
     if(previousLayout!==this.layout){this.lastSimulationFrame=performance.now();this.animationClock.resetFrame(this.lastSimulationFrame);}
   }
@@ -429,10 +439,11 @@ export class Network {
     }
     if(!this.expansion){this.positions=this.layout.positions;return false;}
     const t=Math.min(1,Math.max(0,(now-this.expansion.start)/this.expansion.duration)),ease=t*t*(3-2*t),origin=this.layout.positions[this.layout.coreId]||this.layout.center||[0,0,0];
-    this.positions=Object.fromEntries(this.nodes.map(n=>[n.id,this.layout.positions[n.id].map((x,k)=>origin[k]+(x-origin[k])*ease)]));
+    this.positions=Object.fromEntries((this.renderNodes||this.nodes).map(n=>[n.id,this.layout.positions[n.id].map((x,k)=>origin[k]+(x-origin[k])*ease)]));
     if(t===1){this.expansion=null;this.positions=this.layout.positions;}return true;
   }
   updatePoses() {
+    for(const [id,tween]of this.radiusTweens||[]){const value=radiusTransition(tween.from,tween.to,performance.now()-this.radiusTweenStart);this.radii[id]=value.radius;if(value.done)this.radiusTweens.delete(id);}
     const d = this.pose;
     let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity,padding=1;
     for (let i = 0; i < this.renderNodes.length; i++) {
@@ -510,7 +521,8 @@ export class Network {
     this.focusTransition={from:this.controls.target.clone(),camera:this.camera.position.clone(),offset:direction.multiplyScalar(distance),destination:center,start:performance.now()};return true;
   }
   focusMainTag(name){
-    const region=mainTagRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,mainTag:name,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});if(!region)return false;
+    const root=this.nodes.find(n=>n.isMainTag&&n.mainTag===name);if(root)this.setBranchSelection(root.id);
+    const region=mainTagRegion({nodes:this.renderNodes,positions:this.positions,radii:this.detailRadii,mainTag:name,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});if(!region)return false;
     const center=new THREE.Vector3().fromArray(region.center),direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
     this.selected=null;this.followPosition=null;this.ring.visible=false;this.overviewActive=false;this.simulationFit=true;this.localFocusAnchorId=region.anchorId;this.localFollowPosition=center.clone();this.revealedMainTag=region.anchorId;this.lastLabelCandidates=0;this.setHighlight(region.ids);
     this.camera.far=Math.max(this.camera.far,region.distance*5);this.camera.updateProjectionMatrix();this.controls.maxDistance=Math.max(this.controls.maxDistance,region.distance*4);
@@ -534,7 +546,9 @@ export class Network {
   }
   select(id,{smooth=true}={}) {
     const node=this.nodes.find(n=>n.id===id);
-    if(node?.isMainTag){this.revealedMainTag=this.revealedMainTag===id?null:id;this.lastLabelCandidates=0;this.onMainTag?.(node.mainTag);return;}
+    if(!node)return;
+    if(node.isMainTag){this.revealedMainTag=id;this.lastLabelCandidates=0;this.setBranchSelection(id);this.onMainTag?.(node.mainTag);return;}
+    this.setBranchSelection(id);
     this.revealedMainTag=null;
     if (!this.positions[id] || !this.renderNodes.some((n) => n.id === id))
       return;
@@ -542,7 +556,7 @@ export class Network {
     this.localFocusAnchorId=null;this.localFollowPosition=null;
     this.overviewActive=false;
     const target = new THREE.Vector3().fromArray(this.positions[id]);
-    const region=nodeFocusRegion({nodes:this.renderNodes,positions:this.positions,radii:this.radii,nodeId:id,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});
+    const region=nodeFocusRegion({nodes:this.renderNodes,positions:this.positions,radii:this.detailRadii,nodeId:id,width:this.host.clientWidth,height:this.host.clientHeight,fov:this.camera.fov,aspect:this.camera.aspect,minDistance:this.controls.minDistance});
     const direction=this.camera.position.clone().sub(this.controls.target);if(direction.length()<.001)direction.set(.65,.5,1);direction.normalize();
     const offset=direction.multiplyScalar(region?.distance||Math.max(12,(this.radii[id]||2)*8));
     this.simulationFit=true;this.camera.far=Math.max(this.camera.far,offset.length()*5);this.camera.updateProjectionMatrix();
@@ -568,13 +582,14 @@ export class Network {
     this.onSelect(this.nodes.find((n) => n.id === id));
   }
   fit({track=false}={}) {
+    if(!track&&this.branchSelection){this.branchSelection=null;this.revealedMainTag=null;this.update(this.updateInput);}
     if (!this.renderNodes.length) return;
     this.overviewActive=true;
-    if(!track){this.selected=null;this.followPosition=null;this.ring.visible=false;this.focusTransition=null;this.localFocusAnchorId=null;this.localFollowPosition=null;this.setHighlight([]);}
+    if(!track){this.selected=null;this.followPosition=null;this.ring.visible=false;this.focusTransition=null;this.localFocusAnchorId=null;this.localFollowPosition=null;this.setHighlight([]);this.onClearSelection?.();}
     const center = new THREE.Vector3().fromArray(this.layout.focalPosition());
     this.primaryFollowPosition=center.clone();
     let radius=0;
-    for(const n of this.renderNodes)radius=Math.max(radius,new THREE.Vector3().fromArray(this.positions[n.id]).distanceTo(center)+(this.radii[n.id]||2)*2);
+    for(const n of this.renderNodes)radius=Math.max(radius,new THREE.Vector3().fromArray(this.positions[n.id]).distanceTo(center)+(this.detailRadii[n.id]||2)*2);
     const fitDistance=overviewDistance(radius,this.camera.fov,this.camera.aspect);
     const direction=track?this.camera.position.clone().sub(this.controls.target).normalize():new THREE.Vector3(.65,.5,1).normalize();
     const distance=track?Math.max(fitDistance,this.camera.position.distanceTo(this.controls.target)):fitDistance;
@@ -589,6 +604,7 @@ export class Network {
     this.controls.update();
   }
   setAnimationPaused(paused){const value=this.animationClock.setPaused(paused,performance.now());this.host.dataset.animationPaused=String(value);return value;}
+  setBranchSelection(id){if(this.branchSelection===id)return;this.branchSelection=id;this.update(this.updateInput);this.layout.lockPlanetOrbits({advance:false});this.updateReplayPositions(this.animationClock.now);this.updatePoses();}
   animate() {
     this.frame = requestAnimationFrame(() => this.animate());
     if(typeof document!=='undefined'&&document.hidden){this.lastSimulationFrame=performance.now();this.last=this.lastSimulationFrame;this.animationClock.resetFrame(this.last);return;}
@@ -599,7 +615,7 @@ export class Network {
     this.simulationMs=performance.now()-frameStart;
     const poseStart=performance.now();
     const replaying=!this.animationClock.paused&&this.updateReplayPositions?.(this.animationClock.now);
-    if(advanced||replaying){this.updatePoses();if(!this.simulationFit){const display=this.positions;this.positions=this.layout.positions;this.fit();this.positions=display;this.simulationFit=true;}}
+    if(advanced||replaying||this.radiusTweens?.size){this.updatePoses();if(!this.simulationFit){const display=this.positions;this.positions=this.layout.positions;this.fit({track:true});this.positions=display;this.simulationFit=true;}}
     this.poseMs=performance.now()-poseStart;
     if(this.overviewActive&&performance.now()-(this.lastOverviewFit||0)>250){this.fit({track:true});this.lastOverviewFit=performance.now();}
     this.controls.update();

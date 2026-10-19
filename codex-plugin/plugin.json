@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "venus-private",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "\u672c\u673a Venus \u8d44\u6599\u9010\u6b65\u5206\u6790\u3001\u4f9d\u636e\u8ffd\u6eaf\u4e0e\u80fd\u529b\u6574\u5408",
   "extensions": {
     "com.openai": {

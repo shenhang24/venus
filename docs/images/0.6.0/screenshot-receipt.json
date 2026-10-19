@@ -1,0 +1,165 @@
+{
+  "targetVersion": "0.6.0",
+  "snapshotBaseVersion": "0.3.6",
+  "url": "http://127.0.0.1:10004/",
+  "language": "en",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "format": "JPEG",
+  "syntheticDataOnly": true,
+  "liveModelCalls": 0,
+  "sampleNodeCounts": {
+    "concept": 12,
+    "knowledge": 12,
+    "skill": 12,
+    "vault": 13
+  },
+  "networkVerification": {
+    "concept": {
+      "expandedVisible": 8,
+      "total": 15,
+      "expandedActive": 8,
+      "overviewVisible": 3,
+      "overviewActive": 3,
+      "legendLevels": 6
+    },
+    "knowledge": {
+      "expandedVisible": 8,
+      "total": 15,
+      "expandedActive": 8,
+      "overviewVisible": 3,
+      "overviewActive": 3,
+      "legendLevels": 6
+    },
+    "skill": {
+      "expandedVisible": 8,
+      "total": 15,
+      "expandedActive": 8,
+      "overviewVisible": 3,
+      "overviewActive": 3,
+      "legendLevels": 6
+    },
+    "vault": {
+      "expandedVisible": 9,
+      "total": 16,
+      "expandedActive": 9,
+      "overviewVisible": 4,
+      "overviewActive": 4,
+      "legendLevels": 13
+    }
+  },
+  "interactions": {
+    "locateHiddenNode": {
+      "active": 4,
+      "visible": 4,
+      "paused": true
+    },
+    "cancelLocate": {
+      "active": 3,
+      "visible": 3,
+      "paused": true
+    },
+    "emptyProjectTopicIntersectionHandled": true,
+    "zoomCollapsed": {
+      "active": 3,
+      "visible": 3,
+      "paused": true
+    }
+  },
+  "connectionScreenshot": "Synthetic tunnel identifier only; key field empty; no tunnel started",
+  "versionNote": "Screens show the private development base version; feature code is the release candidate delta, not an already-published 0.6.0 service.",
+  "files": [
+    {
+      "file": "01-vault-sources.jpg",
+      "bytes": 104702,
+      "capturedAt": "2026-10-19T08:05:54.9924060Z",
+      "sha256": "61977074DA2A25D1532D616F3A200DDD35A011C4A1764F12982F3D728F147348"
+    },
+    {
+      "file": "02-ai-knowledge-projects.jpg",
+      "bytes": 100162,
+      "capturedAt": "2026-10-19T08:05:55.3123677Z",
+      "sha256": "058868C1F760DEDD2F2B428624F0E34BC2DE201361EBC02F19A39DBC984A4D9C"
+    },
+    {
+      "file": "03-ai-skills.jpg",
+      "bytes": 107837,
+      "capturedAt": "2026-10-19T08:05:55.6210231Z",
+      "sha256": "9B6D987F9309806D252B1F1D202523BE7E6C6523F0F45F656683F6AB4D0D17BB"
+    },
+    {
+      "file": "04-concept-cloud.jpg",
+      "bytes": 102384,
+      "capturedAt": "2026-10-19T08:06:36.9094801Z",
+      "sha256": "843493D572819BCE55226F223B6AF71A362DAE833B82824662CFCC467F049206"
+    },
+    {
+      "file": "05-vault-network-overview.jpg",
+      "bytes": 78496,
+      "capturedAt": "2026-10-19T08:07:43.8907346Z",
+      "sha256": "186DDFACBF41253959716555BBB0D9281751AF7562837DCD4BB7241E98F781CD"
+    },
+    {
+      "file": "06-knowledge-network-overview.jpg",
+      "bytes": 82554,
+      "capturedAt": "2026-10-19T08:07:45.3698063Z",
+      "sha256": "0876023E2AF295122DDA2B1816DC82518949BBE0E5F3136CDBDF2743A87092D8"
+    },
+    {
+      "file": "07-knowledge-network-expanded.jpg",
+      "bytes": 88024,
+      "capturedAt": "2026-10-19T08:07:46.2367609Z",
+      "sha256": "84EDB7957CA1235E403B5DD59E7C59BCDEF5D7D9B3BE20DCDB4DCFD43F6DD1CE"
+    },
+    {
+      "file": "08-skill-network-overview.jpg",
+      "bytes": 77349,
+      "capturedAt": "2026-10-19T08:08:07.4660637Z",
+      "sha256": "796FF12E73BDC576AD128819A5E7730F52DEC539BD865AFDD324252EEA41C506"
+    },
+    {
+      "file": "09-concept-network-overview.jpg",
+      "bytes": 77609,
+      "capturedAt": "2026-10-19T08:08:14.5182021Z",
+      "sha256": "B62CF4E6AD9AD4DB797664D6DB11199A8E77117E62BF9819BE78BC04A854904B"
+    },
+    {
+      "file": "10-vault-network-expanded.jpg",
+      "bytes": 84696,
+      "capturedAt": "2026-10-19T08:07:44.7695311Z",
+      "sha256": "6242769669DB8C60AE2DB43345720F9D13FF7742A0CC24B1A6EF94773A027277"
+    },
+    {
+      "file": "11-skill-network-expanded.jpg",
+      "bytes": 82731,
+      "capturedAt": "2026-10-19T08:08:08.3491232Z",
+      "sha256": "DEA0E75935CD49570ED2140366EAB991320656E9786046D182C51474579EBBA8"
+    },
+    {
+      "file": "12-concept-network-expanded.jpg",
+      "bytes": 82604,
+      "capturedAt": "2026-10-19T08:08:15.4007325Z",
+      "sha256": "750C4E9B9E5DCBE73BE821DD7B1A457E8FAFB2BCEB83F884E5B642D8932BAAB4"
+    },
+    {
+      "file": "13-logs-updates.jpg",
+      "bytes": 56444,
+      "capturedAt": "2026-10-19T08:09:09.6446229Z",
+      "sha256": "056E4367E5BB4517F38E4B99A744E162152A8A77B6DF2D00B4CFDB30F3094BB2"
+    },
+    {
+      "file": "14-import.jpg",
+      "bytes": 32556,
+      "capturedAt": "2026-10-19T08:09:18.6411223Z",
+      "sha256": "78E574D91D40B8CEE5A48F928746BC99BC09F2ACF8A24D8DAF604713E7DAEF2F"
+    },
+    {
+      "file": "15-mcp-connection.jpg",
+      "bytes": 43675,
+      "capturedAt": "2026-10-19T08:10:58.3117131Z",
+      "sha256": "AF3D11171B09D6FA72842630C497F7B8D06223B90659BEF0907C8F04D2456926"
+    }
+  ]
+}

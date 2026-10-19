@@ -1,5 +1,15 @@
 # Changes
 
+## 0.6.0 — 2026-10-19
+
+- Shared project-primary knowledge organization with preserved themes, sources and manual edits.
+- Selective detail and actual hidden-animation suspension across all four networks.
+- Separate uncapped aggregate volume and original capped detail sizing, without orbit or camera expansion.
+- Thirteen stable Vault activity colors and legend; other network palettes retained.
+- Fifteen new synthetic English browser captures and updated architecture/usage notes.
+
+[Release details and validation](UPDATE-NOTES-0.6.0.md). The maintainer estimates roughly 90% lower token use in this round; this is not a controlled benchmark or guarantee.
+
 ## 0.5.0 — 2026-10-19
 
 - Independent source-layer processing, provider entry controls, and pause/resume for all four network animations.

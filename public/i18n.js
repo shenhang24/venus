@@ -28,6 +28,10 @@ export async function initializeLanguage() {
 // Translate developer-owned literals before inserting private values into them.
 // Titles, file names, quotations, Markdown and analysis bodies never pass here.
 const translations = {
+  '只读原始 Vault，独立于知识和技能；仅提取本地覆盖缺口，不复审已保存概念。':'Reads original Vault independently of knowledge and skills. Extracts only local coverage gaps; saved concepts are not re-reviewed.',
+  '/ 启明星':'/ Morning Star',
+  '概览球体按去重内容数增加体积，无10倍上限；展开后恢复原单节点尺寸。聚合显示不改变轨道、碰撞或相机距离。点击展开分支，查看全图收起；缩放不会展开。':'Overview volume follows unique content counts without a tenfold cap. Expanded nodes retain their original sizing. Aggregate display does not alter orbits, collisions or camera distance. Select to expand; Fit all collapses. Zoom does not expand.',
+  '所属项目':'Project', '全部项目':'All projects', '跨项目主题':'Topics across projects', '全部主题':'All topics', '未归属项目':'Unassigned project', '按来源项目映射归属':'Assigned by source project mapping', '暂无可靠项目归属':'No verified project assignment',
   '试验布局':'Test layout','24 域公转与共享节点':'24-domain orbits and shared nodes','原有连链试验':'Legacy chain test',
   '保存任意来源的原始 Markdown，保留原文。':'Preserve original Markdown from any source.',
   '供 AI 检索、衔接上下文与回答；不覆盖当前指示。':'For AI retrieval, context and answers; never overrides current instructions.',

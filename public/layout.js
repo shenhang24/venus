@@ -438,6 +438,7 @@ export class AffinityLayout {
     const count = this.nodes.length;
     if (!count) return;
     if(floating&&this.coreId){const scale=this.motionStepScale||1;this.stepGravity();this.time+=scale/30;this.steps+=scale;return;}
+    if(this.activeAvoidance&&this.activeNodes.length<count){const active=this.activeAvoidance;active.positions=this.positions;active.velocities=this.velocities;active.time=this.time;active.steps=this.steps;AffinityLayout.prototype.step.call(active,{floating});this.time=active.time;this.steps=active.steps;return;}
     const forces = new Float64Array(count * 3);
     const index = new Map(this.nodes.map((n, i) => [n.id, i]));
     const positions = this.nodes.map((n) => this.positions[n.id]);
@@ -560,7 +561,31 @@ export class AffinityLayout {
     this.steps++;
   }
 
-  spinAngle(id){return phaseOf(id)+this.time*(this.spinRates?.[id]||.25)*SPIN_SPEED_MULTIPLIER;}
+  setActiveNodes(ids){
+    const next=new Set(ids);for(const id of this.starIds||[])next.add(id);
+    for(const id of [...next]){let host=this.orbits[id]?.host,seen=new Set();while(host&&!seen.has(host)){seen.add(host);next.add(host);host=this.orbits[host]?.host;}}
+    const signature=[...next].sort().join('\0');if(this.activeSignature===signature&&this.activeOrbitSource===this.orbits)return;
+    const previous=this.activeIds;this.activeIds=next;this.activeSignature=signature;this.activeOrbitSource=this.orbits;
+    this.activeNodes=this.nodes.filter(n=>next.has(n.id));this.activeIndices=this.activeNodes.map(n=>this.nodeIndices.get(n.id));
+    this.activeSpinTimes||=new Map();this.visibilityClocks||=new Map();
+    for(const n of this.activeNodes){if(!this.activeSpinTimes.has(n.id))this.activeSpinTimes.set(n.id,this.time);if(!previous?.has(n.id))this.bodyAvoidancePrevious?.delete(n.id);}
+    for(const n of this.nodes){const o=this.orbits[n.id];if(!o)continue;let c=this.visibilityClocks.get(n.id);if(!c||c.host!==o.host){c={...(o.clockReference||{}),angle:o.clockReference?.angle||0,lastStep:-1,host:o.host};this.visibilityClocks.set(n.id,c);}o.clockReference=c;}
+    this.orbitHostSource=null;
+    const view=Object.create(this),indices=this.activeIndices;
+    view.nodes=this.activeNodes;view.nodeIndices=new Map(view.nodes.map((n,i)=>[n.id,i]));view.collisionRadii=indices.map(i=>this.collisionRadii[i]);view.orbitOrder=this.orbitOrder.filter(n=>next.has(n.id));
+    view.masses=indices.map(i=>this.masses[i]);view.centrality=indices.map(i=>this.centrality[i]);view.systemExtents=indices.map(i=>this.systemExtents[i]);view.links=this.links.filter(e=>next.has(e.from)&&next.has(e.to));view.activeAvoidance=null;
+    view.bodyMinimum=(i,j)=>this.bodyMinimum(indices[i],indices[j]);view.orbitalClearance=(i,j)=>this.orbitalClearance(indices[i],indices[j]);
+    view.sharedOrbits=(this.sharedOrbits||[]).filter(g=>next.has(g.id));view.bodyAvoidance=this.bodyAvoidance||=new Map();
+    this.activeAvoidance=view;
+    this.activeSharedOrbits=(this.sharedOrbits||[]).filter(g=>next.has(g.id)).map(g=>({...g,memberIndices:g.memberIndices.filter(i=>next.has(this.nodes[i].id))}));
+  }
+
+  orbitClock(id,orbit,key){
+    if(this.activeIds){let clock=this.visibilityClocks.get(id);if(!clock){clock={angle:0,lastStep:-1,host:orbit.host};this.visibilityClocks.set(id,clock);}if(orbit.kind==='planet')this.orbitClocks.set(key,clock);return clock;}
+    let clock=this.orbitClocks.get(key);if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(key,clock);}return clock;
+  }
+
+  spinAngle(id){return phaseOf(id)+(this.activeSpinTimes?.get(id)??this.time)*(this.spinRates?.[id]||.25)*SPIN_SPEED_MULTIPLIER;}
 
   bodyMinimum(i,j){
     return this.collisionRadii[i]+this.collisionRadii[j]+SURFACE_GAP;
@@ -600,6 +625,7 @@ export class AffinityLayout {
   }
 
   stepGravity(){
+    if(this.activeIds)for(const n of this.activeNodes)this.activeSpinTimes.set(n.id,(this.activeSpinTimes.get(n.id)||0)+(this.motionStepScale||1)/30);
     // Display choreography only: no force integration, impulses or escape velocities.
     const stars=[...this.starIds].map(id=>this.nodeIndices.get(id));
     if(this.centerTarget){let remaining=0;const alpha=1-Math.pow(.99,this.motionStepScale||1);this.center=this.center.map((x,k)=>{const d=this.centerTarget[k]-x;remaining+=d*d;return x+d*alpha;});if(remaining<1e-12){this.center=[...this.centerTarget];this.centerTarget=null;}}
@@ -614,7 +640,7 @@ export class AffinityLayout {
       stars.forEach((i,k)=>{const id=this.nodes[i].id;this.positions[id]=center.map((v,a)=>v+offsets[k][a]-mean[a]);this.velocities[id]=[0,0,0];});
     }else if(this.coreId){this.positions[this.coreId]=[...center];this.velocities[this.coreId]=[0,0,0];}
     const profileStart=performance.now();this.lockPlanetOrbits();const orbitEnd=performance.now();
-    for(const n of this.freeNodes||this.nodes)if(!this.starIds.has(n.id)&&!this.orbits[n.id]){
+    for(const n of this.freeNodes||this.nodes)if((!this.activeIds||this.activeIds.has(n.id))&&!this.starIds.has(n.id)&&!this.orbits[n.id]){
       const o=this.freeOrbits.get(n.id),a=o.phase+this.steps*.0007,r=o.radius;
       const frame=o.frame,goal=center.map((x,k)=>x+(frame.u[k]*Math.cos(a)+frame.v[k]*Math.sin(a))*r),old=this.positions[n.id];
       if(this.freeTransitions?.has(n.id)){const delta=goal.map((x,k)=>x-old[k]),distance=Math.hypot(...delta),limit=Math.max(.01,Math.hypot(...old.map((x,k)=>x-center[k]))*.02);this.positions[n.id]=old.map((x,k)=>x+delta[k]*Math.min(1,limit/(distance||1)));if(distance<=limit)this.freeTransitions.delete(n.id);}else this.positions[n.id]=goal;
@@ -622,7 +648,8 @@ export class AffinityLayout {
     }
     // Transfer cruise uses wall-clock time; ordinary orbit clocks keep their scale.
     const tourStart=performance.now();advanceSharedTours(this,(1/30)/Math.max(this.timeScale||1,1e-9)*(this.motionStepScale||1));
-    const avoidStart=performance.now();resolveBodyAvoidance(this);
+    const avoidStart=performance.now(),avoidance=this.activeAvoidance||this;
+    if(avoidance.nodes.length){avoidance.positions=this.positions;avoidance.velocities=this.velocities;avoidance.transferPassThroughIds=this.transferPassThroughIds;resolveBodyAvoidance(avoidance);this.bodyAvoidancePrevious=avoidance.bodyAvoidancePrevious;this.bodyAvoidanceStats=avoidance.bodyAvoidanceStats;}
     this.stepCosts={orbits:orbitEnd-profileStart,tours:avoidStart-tourStart,avoidance:performance.now()-avoidStart};
   }
   lockPlanetOrbits({advance=true}={}){
@@ -630,9 +657,10 @@ export class AffinityLayout {
     if(advance)this.preparePlanetSpeeds();
     if(this.orbitHostSource!==this.orbits){this.orbitHostSource=this.orbits;this.orbitHostIds=new Set(Object.values(this.orbits).map(o=>o.host));this.orbitEvaluation=this.orbitOrder.filter(n=>this.orbits[n.id]&&this.orbits[n.id].kind!=='star').map(n=>({n,orbit:this.orbits[n.id],i:this.nodeIndices.get(n.id),host:this.nodeIndices.get(this.orbits[n.id].host),hasChildren:this.orbitHostIds.has(n.id)}));this.orbitWork={points:new Array(this.nodes.length),velocities:new Array(this.nodes.length),shifts:new Float64Array(this.nodes.length*3),boosts:new Float64Array(this.nodes.length*3)};}
     const tidalCache=new Map();
-    const {points,velocities,shifts,boosts}=this.orbitWork;shifts.fill(0);boosts.fill(0);
-    for(let i=0;i<this.nodes.length;i++){points[i]=this.positions[this.nodes[i].id];velocities[i]=this.velocities[this.nodes[i].id];}
-    for(const entry of this.orbitEvaluation){
+    const {points,velocities,shifts,boosts}=this.orbitWork;
+    for(const i of this.activeIndices||this.nodes.map((_,i)=>i)){points[i]=this.positions[this.nodes[i].id];velocities[i]=this.velocities[this.nodes[i].id];for(let k=0;k<3;k++){shifts[i*3+k]=0;boosts[i*3+k]=0;}}
+    this.activeOrbitEvaluation||=null;if(this.activeOrbitEvaluationSource!==this.orbitEvaluation){this.activeOrbitEvaluationSource=this.orbitEvaluation;this.activeOrbitEvaluation=this.activeIds?this.orbitEvaluation.filter(e=>this.activeIds.has(e.n.id)):this.orbitEvaluation;}
+    for(const entry of this.activeOrbitEvaluation){
       const {n,orbit,i,host,hasChildren}=entry,p=points[i],v=velocities[i],oldP=hasChildren||orbit.motion?[...p]:null,oldV=hasChildren?[...v]:null;
       for(let a=0;a<3;a++){p[a]+=shifts[host*3+a];v[a]+=boosts[host*3+a];}
       {
@@ -652,7 +680,7 @@ export class AffinityLayout {
         // Persistent clocks survive sync(): background imports must not reset
         // any descendant's revolution. Co-orbiting bodies share a phase clock.
         const clockKey=orbit.clockKey??=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
-        let clock=orbit.clockReference||this.orbitClocks.get(clockKey);
+        let clock=this.activeIds?this.orbitClock(n.id,orbit,clockKey):orbit.clockReference||this.orbitClocks.get(clockKey);
         if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(clockKey,clock);}
         orbit.clockReference=clock;
         if(advance&&clock.lastStep!==this.steps){clock.angle-=omega;clock.lastStep=this.steps;}
@@ -684,8 +712,9 @@ export class AffinityLayout {
   preparePlanetSpeeds(){
     const groups=new Map(),speeds=new Map();
     if(this.planetSpeedSource!==this.orbits){this.planetSpeedSource=this.orbits;this.planetSpeedNodes=this.nodes.filter(n=>this.orbits[n.id]?.kind==='planet');}
-    for(const n of this.planetSpeedNodes){const orbit=this.orbits[n.id];
-      const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClocks.get(key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
+    const activePlanets=this.activeIds?this.planetSpeedNodes.filter(n=>this.activeIds.has(n.id)):this.planetSpeedNodes;
+    for(const n of activePlanets){const orbit=this.orbits[n.id];
+      const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClock(n.id,orbit,key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
       if(!clock){clock={angle:0,lastStep:-1,omega:preferred};this.orbitClocks.set(key,clock);}
       const speed=(clock.omega??preferred)+(preferred-(clock.omega??preferred))*.04;speeds.set(n.id,speed);orbit.preferredAngularVelocity=preferred;
       if(orbit.motion)continue;
@@ -703,7 +732,7 @@ export class AffinityLayout {
         speeds.set(follower.id,Math.min(speeds.get(follower.id),maximum));
       }
     }
-    for(const n of this.planetSpeedNodes){const o=this.orbits[n.id];this.orbitClocks.get(JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
+    for(const n of activePlanets){const o=this.orbits[n.id];this.orbitClock(n.id,o,JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
     this.planetStepSpeeds=speeds;
   }
 

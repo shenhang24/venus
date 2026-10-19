@@ -174,19 +174,20 @@ export function advanceSharedTours(layout,deltaSeconds=1/30){
   const stepScale=layout.motionStepScale||1;
   // Per-frame choreography exemption, never a persistent collision setting.
   layout.transferPassThroughIds=new Set();
-  if(!layout.sharedOrbits.length)return;
-  let active=layout.sharedOrbits.filter(g=>g.tour.stage!=='idle').length;
-  for(const g of [...layout.sharedOrbits].filter(g=>g.tour.stage==='idle').sort((a,b)=>a.tour.lastStarted-b.tour.lastStarted||a.id.localeCompare(b.id))){
+  const groups=layout.activeSharedOrbits||layout.sharedOrbits;
+  if(!groups.length)return;
+  let active=groups.filter(g=>g.tour.stage!=='idle').length;
+  for(const g of [...groups].filter(g=>g.tour.stage==='idle').sort((a,b)=>a.tour.lastStarted-b.tour.lastStarted||a.id.localeCompare(b.id))){
     if(active>=12)break;const s=g.tour;s.stage='approach';s.index=Math.max(0,g.visits.findIndex(v=>v.host===layout.orbits[g.id].host));s.orbitStartAngle=s.angle;s.progress=0;s.roundVisits=0;s.lastStarted=layout.tourDispatchCounter=(layout.tourDispatchCounter||0)+1;active++;
   }
-  const moving=new Set(layout.sharedOrbits.flatMap(g=>g.memberIndices)),entries=[];
-  for(let i=0;i<layout.nodes.length;i++)if(!moving.has(i)){
+  const moving=new Set(groups.flatMap(g=>g.memberIndices)),entries=[];
+  for(const i of layout.activeIndices||layout.nodes.map((_,i)=>i))if(!moving.has(i)){
     const id=layout.nodes[i].id,p=layout.positions[id];
     entries.push({id,position:p,radius:layout.collisionRadii[i],size:layout.collisionRadii[i],margin:0});
   }
-  for(const g of layout.sharedOrbits){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];if(s.stage!=='transfer')entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
+  for(const g of groups){const s=g.tour,host=layout.positions[g.visits[s.index].host];if(s.world&&s.stage!=='transfer'&&s.hostPosition)s.world=s.world.map((x,k)=>x+host[k]-s.hostPosition[k]);s.hostPosition=[...host];if(s.stage!=='transfer')entries.push({id:g.id,position:s.world||layout.positions[g.id],radius:layout.systemExtents[g.index],size:layout.subtreeMaxRadius[g.index]});}
   const occupancy=new Occupancy(entries);
-  for(const g of [...layout.sharedOrbits].sort((a,b)=>a.id.localeCompare(b.id))){
+  for(const g of [...groups].sort((a,b)=>a.id.localeCompare(b.id))){
     const s=g.tour,visit=g.visits[s.index],radius=layout.systemExtents[g.index],size=layout.subtreeMaxRadius[g.index],original=[...layout.positions[g.id]];
     if(s.stage==='idle')continue;
     const transferring=s.stage==='transfer';

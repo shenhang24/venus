@@ -11,3 +11,13 @@ Incremental local change detection skips unchanged completed ranges, including v
 Runtime feedback shows actual activity, saved progress, daily logs and recoverable exceptions. Usage counters come from real provider receipts. With terminal-only usage, speed is the latest request's end-to-end average output tokens per second, including startup, waiting and transport. Cache subsets are not added twice, and missing counters are not invented.
 
 This is a program architecture illustration, not a file dependency graph or an external web fact-checking service. See [the detailed update notes](../UPDATE-NOTES-2026-10-19.md) for scope and validation.
+
+## 0.6.0 organization and display path
+
+Saved project identity, source mapping and explicit branch lineage feed one project-membership model for the knowledge directory and network. Project primaries contain content subcategories, while general topics remain cross-project filters. Manual ownership wins over inherited metadata; ambiguous identity remains unassigned. This derives display organization without deleting or merging source Markdown.
+
+The complete node/edge store remains available for retrieval. A branch-visibility stage selects actual rendered instances and active orbit bodies. Overview keeps category roots and loose nodes; explicit selection or locate expands a branch. Hidden orbital clocks, positions, collision bodies and shared tours stop advancing. Clearing selection collapses; zoom does not expand. Pause state is preserved and hidden time is not caught up.
+
+Overview aggregate size counts unique contained content IDs and maps volume to radius through a cube root, without the detail cap. Expanded detail uses the original sizing function and cap. UI-time appearance transitions are separate from orbital time. Display-only radius never enters physical orbit, collision or camera-fit calculations.
+
+Vault's activity evidence is mapped to thirteen stable color tiers. The other three palettes and orbital depth rules are unchanged. The diagram above retains the same source/processing/storage/view architecture; this section specifies the updated organization and rendering stages. [Current screenshots](SCREENSHOTS-0.6.0.md) show the actual views.
