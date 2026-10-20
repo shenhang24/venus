@@ -4,8 +4,22 @@ Vault lists original Markdown files and preserves source text. AI Knowledge pres
 
 Open a record to read, follow a source to Vault, or edit derived content. Import explicitly supplied Markdown through the import dialog. Four networks support rotation, zoom, node focus, relation filtering and content navigation. Demonstration results in the included images are synthetic samples, not live model output.
 
-Actual English captures: Vault (01), AI Knowledge (02), AI Skills (03), Concept Cloud (04), their networks (05-08), import (09), editor (10), saved result (11). See [images](images).
+## Published screenshot tour
 
-## Current 0.6.0 views
+Use the [latest published 0.6.0 gallery](SCREENSHOTS-0.6.0.md), rather than the older image set at the root of `docs/images`:
 
-The screenshots above document the earlier interface. See [the new English synthetic gallery](SCREENSHOTS-0.6.0.md) for project-primary knowledge organization, selective detail in all four networks, thirteen Vault color tiers, logs and dialogs. That 0.6.0 gallery predates the shared-palette update: all four networks now use thirteen colors, including main-category labels. Overview keeps roots and loose nodes; select or locate to expand a branch. Fit all or clear selection collapses it; zoom does not expand. Hidden orbital nodes stop computing, and pause state survives view changes.
+| View | Screenshot |
+| --- | --- |
+| Vault sources | [01](images/0.6.0/01-vault-sources.jpg) |
+| AI Knowledge by project | [02](images/0.6.0/02-ai-knowledge-projects.jpg) |
+| AI Skills | [03](images/0.6.0/03-ai-skills.jpg) |
+| Concept Cloud | [04](images/0.6.0/04-concept-cloud.jpg) |
+| Vault network | [Overview](images/0.6.0/05-vault-network-overview.jpg) / [expanded](images/0.6.0/10-vault-network-expanded.jpg) |
+| AI Knowledge network | [Overview](images/0.6.0/06-knowledge-network-overview.jpg) / [expanded](images/0.6.0/07-knowledge-network-expanded.jpg) |
+| AI Skill network | [Overview](images/0.6.0/08-skill-network-overview.jpg) / [expanded](images/0.6.0/11-skill-network-expanded.jpg) |
+| Concept network | [Overview](images/0.6.0/09-concept-network-overview.jpg) / [expanded](images/0.6.0/12-concept-network-expanded.jpg) |
+| Logs and updates | [13](images/0.6.0/13-logs-updates.jpg) |
+| Import Markdown | [14](images/0.6.0/14-import.jpg) |
+| MCP connection | [15](images/0.6.0/15-mcp-connection.jpg) |
+
+These captures show project-primary knowledge organization, selective network detail, logs and dialogs. They predate the shared-palette update: all four networks now use thirteen colors, including main-category labels. Overview keeps roots and loose nodes; select or locate to expand a branch. Fit all or clear selection collapses it; zoom does not expand. Hidden orbital nodes stop computing, and pause state survives view changes.

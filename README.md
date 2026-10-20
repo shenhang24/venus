@@ -120,22 +120,29 @@ See [integration details](docs/INTEGRATIONS.md).
 
 Tests use synthetic fixtures and isolated temporary directories. Synthetic thousand/ten-thousand-node rendering checks do not establish performance for ten thousand real long documents. Window adaptation is not a test of every physical display. See [release review](docs/RELEASE-REVIEW.md) for the actual preparation results.
 
-The screenshots below are actual Chrome captures from an isolated English demo. All content is synthetic and precomputed results are labeled **Sample**; they do not depict live AI extraction or the author's private library.
+The screenshots below use the latest published image set already included in this repository: the 0.6.0 English synthetic demo. They are actual browser captures with fictional content, not the author's private library or live AI extraction. They document that release snapshot and may predate later interface changes.
 
-![Vault sources](docs/images/01-vault-sources.jpg)
-![AI Knowledge](docs/images/02-ai-knowledge.jpg)
-![AI Skills](docs/images/03-ai-skills.jpg)
-![Concept Cloud](docs/images/04-concept-cloud.jpg)
-![Concept network](docs/images/08-concept-network.jpg)
+### Content pages
 
-![Vault network](docs/images/05-vault-network.jpg)
-![AI Knowledge network](docs/images/06-ai-knowledge-network.jpg)
-![AI Skill network](docs/images/07-ai-skill-network.jpg)
-![Import Markdown](docs/images/09-import-markdown.jpg)
-![Edit a sample record](docs/images/10-live-editor.jpg)
-![Saved sample record](docs/images/11-editor-saved.jpg)
+![Vault sources](docs/images/0.6.0/01-vault-sources.jpg)
+![AI Knowledge by project](docs/images/0.6.0/02-ai-knowledge-projects.jpg)
+![AI Skills](docs/images/0.6.0/03-ai-skills.jpg)
+![Concept Cloud](docs/images/0.6.0/04-concept-cloud.jpg)
 
-All eleven captures, including import, editing and the four networks, are in [docs/images](docs/images). Third-party notices remain in [third-party-licenses](third-party-licenses/).
+### Network overviews
+
+![Vault network overview](docs/images/0.6.0/05-vault-network-overview.jpg)
+![AI Knowledge network overview](docs/images/0.6.0/06-knowledge-network-overview.jpg)
+![AI Skill network overview](docs/images/0.6.0/08-skill-network-overview.jpg)
+![Concept network overview](docs/images/0.6.0/09-concept-network-overview.jpg)
+
+### Logs and dialogs
+
+![Logs and updates](docs/images/0.6.0/13-logs-updates.jpg)
+![Import Markdown](docs/images/0.6.0/14-import.jpg)
+![MCP connection](docs/images/0.6.0/15-mcp-connection.jpg)
+
+See the [complete 15-image gallery](docs/SCREENSHOTS-0.6.0.md) for expanded views of all four networks and the [capture receipt](docs/images/0.6.0/screenshot-receipt.json) for the synthetic workload. Third-party notices remain in [third-party-licenses](third-party-licenses/).
 
 ## Data and licensing
 
@@ -175,7 +182,7 @@ Basic local reading and editing require no model credentials. Codex analysis use
 
 This release adds independent layer controls and network pause/resume, truthful activity and exception recovery, current-material incremental extraction, and provider usage receipts. The bottom status bar reports returned token counters and the latest request's average output rate, including waiting and transport; it does not claim live streaming throughput. Unavailable counters remain unavailable.
 
-Text fields, editors, dialogs and floating panels now have consistent padding, line spacing and wrapping. Long dialog content scrolls independently while actions stay visible. The [synthetic spacing example](docs/images/12-dialog-spacing.png) uses no personal material. Existing English demo screenshots remain illustrative and may predate these controls.
+Text fields, editors, dialogs and floating panels now have consistent padding, line spacing and wrapping. Long dialog content scrolls independently while actions stay visible. The [published synthetic dialog example](docs/images/0.6.0/14-import.jpg) uses no personal material. Existing English demo screenshots remain illustrative and may predate these controls.
 
 ## 0.6.0: projects and focused network detail
 
