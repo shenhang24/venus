@@ -15,3 +15,9 @@ The graph-view JavaScript source is included and the merged build passed. Forty-
 The allowlist merges 21 reviewed implementation delta files, updated English documentation and fifteen isolated synthetic browser captures with their receipt. Private source-project catalogs, classifications, history, configuration, logs and private UI images are excluded. Account-specific Tunnel literals and priority overrides are removed from the public copy; configuration remains user-supplied. Existing MIT/community documents and third-party licenses remain in place.
 
 Implementation validation passed 56 targeted checks. The public merged build and the project/branch/palette/locale checks passed; public Tunnel controls were separately checked after configuration sanitization. Browser receipts describe only the synthetic workload and do not claim new large-private-library performance acceptance. No model calls were added for verification or for the informal token-use estimate.
+
+## Shared thirteen-color palette update
+
+This update changes only heat mapping, main-category colors, legends, their generated browser bundle and related tests/documentation. Public priority defaults remain empty and Tunnel configuration remains user-supplied. No runtime data, private screenshots or provider configuration is included.
+
+The build and 20 targeted palette, category and visibility checks passed. The complete suite passed 315 of 330 checks; all 15 failures also occur on the unchanged 0.6.0 base (314 of 329). The added all-tier/all-network test passes; no new failing test names were observed. This comparison does not resolve the existing renderer, orbital and relation-history failures. The historical 0.6.0 gallery is not new visual evidence for this update.

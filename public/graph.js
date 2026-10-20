@@ -1362,7 +1362,7 @@ export function organizeProjectKnowledge(state){const groups=projectGroups(state
 export function knowledgeProjectBuckets(nodes){const buckets=new Map();for(const n of nodes.filter(n=>n.kind==='knowledge'&&!n.mergedInto))for(const h of nodeTagHierarchy({...n,knowledgeProjectOrganization:true})){const key=h.key||h.primary;if(!buckets.has(key))buckets.set(key,{key,name:h.primary,projectId:h.projectId||null,kind:h.kind,nodes:[],topics:new Set()});const b=buckets.get(key);b.nodes.push(n);for(const t of h.secondary)b.topics.add(t);}return [...buckets.values()].map(b=>({...b,count:b.nodes.length,topics:[...b.topics].sort()})).sort((a,b)=>a.kind==='unassigned'?1:b.kind==='unassigned'?-1:a.name.localeCompare(b.name));}
 export function knowledgeTopicNames(node){return [...new Set([...themeHierarchy(node).flatMap(t=>[t.primary,...t.secondary]),...(node.categories||[])])].filter(Boolean);}
 
-// Thirteen stable activity tiers; only Vault uses this palette.
+// One stable activity palette shared by all four content networks.
 export const VAULT_HEAT_LEVELS=[
   {name:'White',color:'#eeeeee',label:'Single use',turns:0},
   {name:'Pale green',color:'#b8e7bd',label:'2 substantive turns',turns:2},
@@ -1384,6 +1384,9 @@ export function vaultActivityHeat(heat={}){
   if(heat.basis==='user-project')level=12;
   return {...heat,level,...VAULT_HEAT_LEVELS[level]};
 }
+// Keep the original Vault exports compatible with existing integrations.
+export const NETWORK_HEAT_LEVELS=VAULT_HEAT_LEVELS;
+export const networkActivityHeat=vaultActivityHeat;
 
 
 
@@ -1411,7 +1414,7 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
     const members=nodes.filter(node=>mainTagNames(node).includes(name));
     const connectionCount=new Set(members.map(node=>node.id)).size;
     const hierarchy=members.flatMap(nodeTagHierarchy).find(h=>(h.key||h.primary)===name);
-    cores.push({id,title:hierarchy?.kind==='project'?hierarchy.primary:tr(hierarchy?.primary||name),isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount,nodes[0]?.kind==='vault'?VAULT_MAIN_TAG_HEAT_STEPS:MAIN_TAG_HEAT_STEPS)});
+    cores.push({id,title:hierarchy?.kind==='project'?hierarchy.primary:tr(hierarchy?.primary||name),isMainTag:true,mainTag:name,mainTags:[],kind:nodes[0]?.kind,domainConnectionCount:connectionCount,heat:mainTagHeat(connectionCount)});
     if(centered)seeds[id]=[0,0,0];else seeds[id]||=[Math.cos(angle)*spacing*7,Math.sin(angle*2.3)*spacing*3,Math.sin(angle)*spacing*7];
     for(const node of members){
       const h=nodeTagHierarchy(node).find(h=>(h.key||h.primary)===name),evidence=h?.kind==='project'?{reason:tr('按来源项目映射归属')+' · '+h.primary,quote:''}:(node.mainTags||[]).find(tag=>tagHierarchy(tag.name)?.primary===name)||{reason:tr(h?.kind==='unassigned'?'暂无可靠项目归属':'同一项目范围（按分支标题归组）'),quote:''};
@@ -1426,15 +1429,8 @@ export function buildMainTagGraph(nodes,edges,positions={},spacing=30){
 }
 import {tr} from './i18n.js';
 
-export const MAIN_TAG_HEAT_STEPS=[
-  {minimum:0,name:'白',color:'#eeeeee'},
-  {minimum:3,name:'绿',color:'#63cf8b'},
-  {minimum:10,name:'蓝',color:'#61a7f5'},
-  {minimum:25,name:'紫',color:'#b18af2'},
-  {minimum:50,name:'橙',color:'#f5a451'},
-  {minimum:100,name:'金',color:'#f3ce60'},
-];
-export const VAULT_MAIN_TAG_HEAT_STEPS=VAULT_HEAT_LEVELS.map((h,i)=>({...h,minimum:[0,2,3,5,10,16,25,32,40,45,50,75,100][i]}));
+export const MAIN_TAG_HEAT_STEPS=VAULT_HEAT_LEVELS.map((h,i)=>({...h,minimum:[0,2,3,5,10,16,25,32,40,45,50,75,100][i]}));
+export const VAULT_MAIN_TAG_HEAT_STEPS=MAIN_TAG_HEAT_STEPS;
 export function mainTagHeat(count,steps=MAIN_TAG_HEAT_STEPS){
   const rank=steps.filter(step=>count>=step.minimum).at(-1)||steps[0];
   return {color:rank.color,name:tr(rank.name),label:tr('归属连接')+' '+count,reason:tr('按归属节点去重计数；颜色不代表技能程度。')};

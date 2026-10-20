@@ -1,12 +1,5 @@
-import {vaultActivityHeat} from '../public/vault-heat.js';
-export const HEAT_LEVELS = [
-  {name:'白色',color:'#eeeeee',label:'单次使用'},
-  {name:'绿色',color:'#63cf8b',label:'多轮跟进'},
-  {name:'蓝色',color:'#61a7f5',label:'反复推进'},
-  {name:'紫色',color:'#b18af2',label:'跨天持续'},
-  {name:'橙色',color:'#f5a451',label:'持续投入'},
-  {name:'金色',color:'#f3ce60',label:'长期重点'},
-];
+import {NETWORK_HEAT_LEVELS,networkActivityHeat} from '../public/vault-heat.js';
+export const HEAT_LEVELS = NETWORK_HEAT_LEVELS;
 export const DEFAULT_HEAT_RULES = [];
 const dayFormat = new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'});
 function dayOf(value){
@@ -28,12 +21,7 @@ export function messageActivity(body){
   return out;
 }
 export function activityLevel(turns,days,sessions=1){
-  if(days>=5&&turns>=16)return 5;
-  if(days>=3&&turns>=8)return 4;
-  if(days>=2&&turns>=3)return 3;
-  if(turns>=4||sessions>=3)return 2;
-  if(turns>=2||sessions>=2)return 1;
-  return 0;
+  return networkActivityHeat({userTurns:turns,activeDays:days,sourceConversations:sessions}).level;
 }
 export function deriveHeat(nodes,{cache=new Map(),rules=DEFAULT_HEAT_RULES}={}){
   const byId=new Map(nodes.map(n=>[n.id,n])),events=new Map(),results=new Map();
@@ -87,7 +75,7 @@ export function deriveHeat(nodes,{cache=new Map(),rules=DEFAULT_HEAT_RULES}={}){
     const heat={level,...style,userTurns,activeDays:days.size,sourceConversations:vaults.size,
       basis:project?'user-project':'source-activity',project:project?.name||null,
       reason:project?project.reason:`${userTurns} 条用户跟进，${days.size} 个讨论日期，${vaults.size} 份来源对话；按引用定位，未用字数或关键词出现次数计分。`};
-    results.set(n.id,n.kind==='vault'?vaultActivityHeat(heat):heat);
+    results.set(n.id,networkActivityHeat(heat));
   }
   for(const id of cache.keys())if(!byId.has(id))cache.delete(id);
   return results;

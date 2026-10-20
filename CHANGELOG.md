@@ -1,5 +1,10 @@
 # Changes
 
+## Unreleased
+
+- Share the existing thirteen-color activity palette and legends across Vault, AI Knowledge, AI Skills and Concept Cloud.
+- Apply the same palette to main-category labels using unique membership counts; preserve activity evidence, explicit priority gold and orbital behavior.
+
 ## 0.6.0 — 2026-10-19
 
 - Shared project-primary knowledge organization with preserved themes, sources and manual edits.

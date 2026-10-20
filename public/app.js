@@ -6,7 +6,7 @@ let layerSourceId=null;
 let pendingLayerProvider=null;
 await initializeLanguage();
 import { marked } from "/vendor/marked.js";
-import { Network, shortNodeLabel, createRelationVisibility, relationDisplayTypes, nodeTagHierarchy, matchesMainTag, vaultActivityHeat, VAULT_HEAT_LEVELS } from "/graph.js";
+import { Network, shortNodeLabel, createRelationVisibility, relationDisplayTypes, nodeTagHierarchy, matchesMainTag, networkActivityHeat, NETWORK_HEAT_LEVELS } from "/graph.js";
 const relationVisibility=createRelationVisibility(globalThis.localStorage);
 import { knowledgeForSource, knowledgeInScope, knowledgeListPage, chooseKnowledgeSource, knowledgeStatus, taskPresentation, activityState, fileStageProgress, InlineDrafts, saveInlineDraft, linkedNeighbours, installButtonFeedback, runButtonAction, currentButtonAction, actionResult, SavedProgressObserver, processingState, conceptRecheckMessage, collectProcessingEvidence, tokenUsagePresentation } from "/knowledge-view.js";
 installButtonFeedback(document);
@@ -176,7 +176,7 @@ async function refreshState() {
   const r = await fetch("/api/state?summary=1");
   if (!r.ok) throw Error(tr("无法读取本机资料"));
   const next = organizeProjectKnowledge(await r.json());
-  next.nodes=next.nodes.map(n=>n.kind==='vault'?{...n,heat:vaultActivityHeat(n.heat)}:n);
+  next.nodes=next.nodes.map(n=>({...n,heat:networkActivityHeat(n.heat)}));
   const evidenceStamp=[next.revision,next.conceptContentReview?.lastUpdatedAt].join(':');
   if(evidenceStamp!==processingEvidenceStamp){try{const jr=await fetch('/api/journal?limit=100');if(jr.ok){processingEvidence=collectProcessingEvidence((await jr.json()).items,processingEvidence);processingEvidenceStamp=evidenceStamp;}}catch{}}
   next.processingEvidence=processingEvidence;
@@ -1338,7 +1338,7 @@ function renderNetwork() {
     '</h1><div class="subtle">' +
     scope[view] +
     tr(' · 三维空间 · 依据联系紧密度浮动</div><div class="heat-legend" aria-label="重要程度由低到高">')+
-    (view==='vault-network'?VAULT_HEAT_LEVELS.map((h,i)=>[h.color,String(i+1),h.name+' · '+h.label]):[['#eeeeee',tr('白'),tr('单次使用')],['#63cf8b',tr('绿'),tr('2 轮跟进')],['#61a7f5',tr('蓝'),tr('4 轮推进或 3 份对话复用')],['#b18af2',tr('紫'),tr('跨 2 天且 3 轮')],['#f5a451',tr('橙'),tr('跨 3 天且 8 轮')],['#f3ce60',tr('金'),tr('跨 5 天且 16 轮，或指定重点项目')]]).map(([color,name,reason])=>'<span title="'+esc(reason)+'"><i style="background:'+color+'"></i>'+name+'</span>').join('')+
+    NETWORK_HEAT_LEVELS.map((h,i)=>'<span title="'+esc(h.name+' · '+h.label)+'"><i style="background:'+h.color+'"></i>'+(i+1)+'</span>').join('')+
     tr('</div></div><div class="actions"><select id="node-locate" aria-label="定位任意节点"></select><button id="fit-graph">查看全图</button></div></div><div id="graph-area" class="graph-area" aria-label="可环绕缩放的三维网络"><div class="graph-stats" id="graph-stats"></div><div class="graph-camera" id="graph-camera"></div><div class="graph-empty"><h2>让关系逐步浮现</h2><p>资料与依据保存后，节点会自动出现。</p></div><div class="graph-hint">颜色：使用与持续推进热度　拖动：环绕　滚轮：缩放　点击：观察中心　双击：进入内容　文字随距离缩小、隐藏</div></div></div>');
   try {
     $('#graph-area').insertAdjacentHTML('beforeend', '<details class="graph-task-float"><summary id="graph-task-summary">'+esc(taskSummaryText())+'</summary><div id="graph-activity" aria-label="'+esc(tr('活动文件'))+'">'+compactSlotsHTML()+'</div><div id="graph-token-usage">'+tokenUsageHTML()+'</div></details>');

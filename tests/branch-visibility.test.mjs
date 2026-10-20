@@ -26,7 +26,7 @@ test('hidden orbital positions, velocities, tour state and clocks freeze; resume
  layout.setActiveNodes(new Set([...cores,'a']));layout.lockPlanetOrbits({advance:false});assert.equal(layout.visibilityClocks.get('a').angle,clock.angle);layout.step();assert.ok(Math.abs(layout.visibilityClocks.get('a').angle-clock.angle)<.1);assert.deepEqual(layout.positions.b,b);
  assert.ok(layout.activeNodes.every(n=>cores.includes(n.id)||n.id==='a'));assert.equal(layout.activeAvoidance.nodes.length,cores.length+1);
 });
-test('Vault alone has thirteen stable evidence-based colors and designated priority stays gold',()=>{
+test('the shared palette has thirteen stable evidence-based colors and designated priority stays gold',()=>{
  assert.equal(VAULT_HEAT_LEVELS.length,13);assert.equal(new Set(VAULT_HEAT_LEVELS.map(h=>h.color)).size,13);
  const examples=[[0,1,1],[2,1,1],[3,1,1],[4,1,1],[5,1,1],[6,1,1],[3,2,1],[5,2,1],[5,3,1],[6,3,1],[8,3,1],[12,4,1],[16,5,1]];
  assert.deepEqual(examples.map(([userTurns,activeDays,sourceConversations])=>vaultActivityHeat({userTurns,activeDays,sourceConversations}).level),examples.map((_,i)=>i));

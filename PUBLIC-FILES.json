@@ -46,8 +46,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 4710,
-      "sha256": "577aba047f09a30cbd91d3f1fc1f3abd7c01651af40bb9c5950bdab7a862dbff"
+      "bytes": 5002,
+      "sha256": "80561e8cdbb5f3d4f6360293659b466b434f8012a519b9d039aba2005068ece6"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -76,8 +76,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 21693,
-      "sha256": "6de1e13dad7a151a0095bc4fbc57d4077c874eb717d92c9df6e149d29e30d693"
+      "bytes": 21935,
+      "sha256": "f1b4d154cfd051d7e8b70b8857a8dc4c032fc0c036ecae3e9fd2c11e0dc87590"
     },
     {
       "path": "RELEASE-NOTES.md",
@@ -206,8 +206,8 @@
     },
     {
       "path": "docs/ARCHITECTURE.md",
-      "bytes": 3072,
-      "sha256": "faa81a3dad23d4f9f70bbf714f8fa4ae6c4169f807a286b918e4d8562b91b7c2"
+      "bytes": 3436,
+      "sha256": "d4a3b02416e07a8aa659c33627c4d7dcc41dc4ce4b70972027de491a668725d5"
     },
     {
       "path": "docs/CREDITS.md",
@@ -231,8 +231,8 @@
     },
     {
       "path": "docs/PAGE-TOUR.md",
-      "bytes": 1368,
-      "sha256": "4d9252e75c84f8001037e9e5a77859672dbce6dcf454942314fda655b5f5c3e9"
+      "bytes": 1498,
+      "sha256": "69c0e6c05eeb3f65bb5da79567f967339847fc518c8667fd097ec5682fec5289"
     },
     {
       "path": "docs/PRIVACY.md",
@@ -241,8 +241,8 @@
     },
     {
       "path": "docs/RELEASE-REVIEW.md",
-      "bytes": 2472,
-      "sha256": "801425527836d094d4884ddb068757ba6d5e7eceaf2704cf553eb2073978672a"
+      "bytes": 3252,
+      "sha256": "8636e376cc4a780f20778b0e79a04aadbbe617cc902003564f28cbaeb41d7126"
     },
     {
       "path": "docs/SCREENSHOTS-0.6.0.md",
@@ -426,8 +426,8 @@
     },
     {
       "path": "public/app.js",
-      "bytes": 109450,
-      "sha256": "88ba49d15309fe75a24b73b02220a088cab99ef3325518847142e92b3b9adccf"
+      "bytes": 109052,
+      "sha256": "0bf651e8a9c2805ed63fb7db2f30007171de130ffbdfe14afe9a91413fbb12d8"
     },
     {
       "path": "public/body-avoidance.js",
@@ -441,8 +441,8 @@
     },
     {
       "path": "public/graph.js",
-      "bytes": 166292,
-      "sha256": "6eb1827a45c4d8aadc4abc8551e77c5f4afbf0548eb77951f1471e2ce0d1168d"
+      "bytes": 166161,
+      "sha256": "1c45b6f49b426f2684ef2041fe1d67dda0f9e8b9a968941e12cd259c8bb06fff"
     },
     {
       "path": "public/i18n.js",
@@ -471,8 +471,8 @@
     },
     {
       "path": "public/main-tags.js",
-      "bytes": 4237,
-      "sha256": "f98f834b869704539b2444241ab1b77cf1715e3479e4aef5c5edb3db47757981"
+      "bytes": 3925,
+      "sha256": "bbeac928f56fea08189e0e27b7883f49723b317d9459ea696271a1e3f20af6ce"
     },
     {
       "path": "public/motion-trails.js",
@@ -511,8 +511,8 @@
     },
     {
       "path": "public/vault-heat.js",
-      "bytes": 1628,
-      "sha256": "9d21efea2f139a165ea68d16b379f2cab2ea7d31190e9e134426105aca3e602f"
+      "bytes": 1809,
+      "sha256": "da158e642dc229baa3af5ef13308eab360613865133cf66480989098c5c9a7d2"
     },
     {
       "path": "scripts/backup-history.py",
@@ -606,8 +606,8 @@
     },
     {
       "path": "src/heat.mjs",
-      "bytes": 5176,
-      "sha256": "04d4f930f18e1f3141c45233c7719947477c530d59fb040ce96b64fed74a7de0"
+      "bytes": 4772,
+      "sha256": "1354fb05aea5406eeace658a6de24436333bc07e94eaf6e94213e7edded10692"
     },
     {
       "path": "src/knowledge-similarity.mjs",
@@ -706,8 +706,8 @@
     },
     {
       "path": "tests/branch-visibility.test.mjs",
-      "bytes": 5681,
-      "sha256": "b3bb07270ee631c6716bd0c859a55e7bb226fcabffa20a693816b7635c26671a"
+      "bytes": 5688,
+      "sha256": "4ecde474b9019ef64ef17713b4d3a58c0c7af0a04fc8d86d0f41f19d93374a14"
     },
     {
       "path": "tests/chatgpt-import.test.mjs",
@@ -791,8 +791,8 @@
     },
     {
       "path": "tests/heat.test.mjs",
-      "bytes": 3038,
-      "sha256": "65b1d39de6b04983361cdeecdf0241e86d05a4c05b865ea86158e71c3fa26294"
+      "bytes": 3944,
+      "sha256": "598b80397a3de980c591d7fda5abb98b0d8b494136e85c82bd756d22f5a5b886"
     },
     {
       "path": "tests/historical-concepts.test.mjs",
@@ -856,8 +856,8 @@
     },
     {
       "path": "tests/main-tags.test.mjs",
-      "bytes": 7498,
-      "sha256": "35ea20ca6db6e4d8f575dcfb1b76940596fc41f77b64e333510229c9181acee4"
+      "bytes": 7874,
+      "sha256": "149046a28172870379c43cc94032e043bc9946e518e3c0031cb58aadd5afc759"
     },
     {
       "path": "tests/mcp-panel.test.mjs",

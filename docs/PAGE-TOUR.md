@@ -8,4 +8,4 @@ Actual English captures: Vault (01), AI Knowledge (02), AI Skills (03), Concept 
 
 ## Current 0.6.0 views
 
-The screenshots above document the earlier interface. See [the new English synthetic gallery](SCREENSHOTS-0.6.0.md) for project-primary knowledge organization, selective detail in all four networks, thirteen Vault color tiers, logs and dialogs. Overview keeps roots and loose nodes; select or locate to expand a branch. Fit all or clear selection collapses it; zoom does not expand. Hidden orbital nodes stop computing, and pause state survives view changes.
+The screenshots above document the earlier interface. See [the new English synthetic gallery](SCREENSHOTS-0.6.0.md) for project-primary knowledge organization, selective detail in all four networks, thirteen Vault color tiers, logs and dialogs. That 0.6.0 gallery predates the shared-palette update: all four networks now use thirteen colors, including main-category labels. Overview keeps roots and loose nodes; select or locate to expand a branch. Fit all or clear selection collapses it; zoom does not expand. Hidden orbital nodes stop computing, and pause state survives view changes.

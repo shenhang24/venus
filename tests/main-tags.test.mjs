@@ -61,8 +61,9 @@ test('centre volume never exceeds ten base planets and render radius matches col
 test('large domain cores grow one percent per unique member and change colors at documented thresholds',()=>{
   const settings={baseRadius:2,growth:.01};
   assert.equal(displayedRadius({isMainTag:true,domainConnectionCount:3},settings),2*1.4*1.03);
-  const colors=[[0,'#eeeeee'],[2,'#eeeeee'],[3,'#63cf8b'],[9,'#63cf8b'],[10,'#61a7f5'],[25,'#b18af2'],[50,'#f5a451'],[100,'#f3ce60']];
+  const colors=[[0,'#eeeeee'],[2,'#b8e7bd'],[3,'#63cf8b'],[5,'#44d3bf'],[10,'#61a7f5'],[16,'#7586ec'],[25,'#b18af2'],[32,'#cc79dc'],[40,'#e77bb2'],[45,'#ee8585'],[50,'#f5a451'],[75,'#e9c754'],[100,'#f3ce60']];
   for(const [count,color]of colors)assert.equal(mainTagHeat(count).color,color);
+  for(const kind of ['vault','knowledge','skill','concept'])for(const [count,color]of colors.slice(1)){const grouped=buildMainTagGraph(Array.from({length:count},(_,i)=>({id:'n'+i,kind,mainTags:[{name:'音乐'}]})),[]);assert.equal(grouped.nodes.find(n=>n.isMainTag).heat.color,color,kind+' '+count);}
   const nodes=Array.from({length:3},(_,i)=>({id:'n'+i,kind:'knowledge',mainTags:[{name:'音乐'},{name:'音乐'}]}));
   const graph=buildMainTagGraph(nodes,[]);
   assert.equal(graph.nodes.find(n=>n.isMainTag).domainConnectionCount,3);

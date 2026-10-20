@@ -1,4 +1,4 @@
-// Thirteen stable activity tiers; only Vault uses this palette.
+// One stable activity palette shared by all four content networks.
 export const VAULT_HEAT_LEVELS=[
   {name:'White',color:'#eeeeee',label:'Single use',turns:0},
   {name:'Pale green',color:'#b8e7bd',label:'2 substantive turns',turns:2},
@@ -20,3 +20,6 @@ export function vaultActivityHeat(heat={}){
   if(heat.basis==='user-project')level=12;
   return {...heat,level,...VAULT_HEAT_LEVELS[level]};
 }
+// Keep the original Vault exports compatible with existing integrations.
+export const NETWORK_HEAT_LEVELS=VAULT_HEAT_LEVELS;
+export const networkActivityHeat=vaultActivityHeat;
