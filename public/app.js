@@ -1,4 +1,5 @@
 import {organizeProjectKnowledge,knowledgeProjectBuckets,knowledgeTopicNames,projectKey,UNASSIGNED_PROJECT} from '/taxonomy.js';
+import {initWorkspaceControls} from '/workspace-controls.js';
 import { tr, initializeLanguage, uiLocale, uiError, heatText } from '/i18n.js';
 async function renderLayerControls(host,sourceId,helpers){try{const module=await import('/layer-controls.js');return module.renderLayerControls(host,sourceId,{...helpers,api:(route,data)=>helpers.api(route,route==='layers/start'&&pendingLayerProvider?{...data,connection:pendingLayerProvider}:data)});}catch{if(host?.isConnected)host.textContent=tr('四层处理入口将在安全加载新版后台后可用。');}}
 let networkAnimationPaused=false;
@@ -157,6 +158,26 @@ async function api(route, data) {
 }
 const bodyCache = new Map(), readingPages = new Map();
 let renderGeneration = 0;
+let taskControlPending=false;
+function taskControlMessage(control){
+  return tr(control?.externalControlRequired?'独立执行器仍在退出，尚未完全暂停':({enabled:'任务已启用，按保存断点继续',pausing:'正在暂停，等待当前请求退出',paused:'任务已完全暂停，已保存断点保留',stopped:'任务未启用，已保存断点保留',unavailable:'任务控制将在后台下次正常启动后可用'})[control?.phase]||'任务控制将在后台下次正常启动后可用');
+}
+function paintTaskControls(){
+  const c=state.taskControl,message=taskControlMessage(c),start=$('#ribbon-task-start'),pause=$('#ribbon-task-pause'),status=$('#ribbon-task-status');
+  if(!start||!pause)return;
+  start.disabled=taskControlPending||!c?.available||c?.phase==='pausing';pause.disabled=taskControlPending||!c?.canPause;
+  start.title=tr('更新同步／断点继续')+' · '+message;start.setAttribute('aria-label',tr('更新同步／断点继续'));pause.title=tr('完全暂停任务')+' · '+message;
+  pause.setAttribute('aria-pressed',String(c?.phase==='paused'));status.textContent=message;status.title=message;status.dataset.phase=c?.phase||'unavailable';
+}
+async function controlTasks(action){
+  if(taskControlPending)return;taskControlPending=true;paintTaskControls();const context=currentButtonAction();
+  try{
+    const response=await fetch('/api/tasks/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    const result=await response.json();if(!response.ok)throw Error(response.status===404?tr('任务控制将在后台下次正常启动后可用'):uiError(result.error));
+    state.taskControl=result;const message=taskControlMessage(result);actionResult(context,{message});toast(message);await refresh();
+  }catch(error){actionResult(context,{error:error.message});toast(error.message);}
+  finally{taskControlPending=false;paintTaskControls();}
+}
 async function loadBody(node) {
   const cached = bodyCache.get(node.id);
   if (cached?.hash === node.hash) { node.body = cached.body; return; }
@@ -182,8 +203,9 @@ async function refreshState() {
   next.processingEvidence=processingEvidence;
   if(Date.now()>=tokenUsageNextRead){tokenUsageNextRead=Date.now()+5000;try{const u=await fetch('/api/token-usage');if(u.ok)tokenUsage=await u.json();else{tokenUsage={unavailableReason:u.status===404?'collector-not-loaded':'usage-unavailable'};tokenUsageNextRead=Date.now()+60000;}}catch{tokenUsage={unavailableReason:'usage-unavailable'};}}
   stateReadError=null;stateReadAt=Date.now();const observedTask=processingState(next);processingObservation=savedProgressObserver.observe(observedTask.key,observedTask.offset,stateReadAt,observedTask.lastSavedAt);
-  if (next.revision === state.revision) {state=next;paintProcessingStatus();return;}
+  if (next.revision === state.revision) {state=next;paintTaskControls();paintProcessingStatus();return;}
   state = next;
+  paintTaskControls();
   hidden=relationVisibility.hiddenFor(state.types);
   if (selectedEdge)
     selectedEdge =
@@ -508,7 +530,7 @@ function article(n) {
     esc(labels[view]) +
     " <span>/</span> " +
     esc(uiPath(n.path)) +
-    '<span class="spacer"></span><span id="inline-save-status" role="status">'+esc(tr(draft.status))+'</span><button id="inline-save"'+(!draft.dirty?' disabled':'')+'>'+tr('保存')+'</button></div><input id="inline-title" class="inline-title" aria-label="'+esc(tr('标题'))+'" value="'+esc(draft.title)+'"><div class="metadata"><span class="tag">' +
+    '<span class="spacer"></span><span id="inline-save-status" role="status">'+esc(tr(draft.status))+'</span><button id="inline-save"'+(!draft.dirty?' disabled':'')+'>'+tr('保存')+'</button><button id="inline-delete" class="danger" type="button">'+tr('删除')+'</button></div><input id="inline-title" class="inline-title" aria-label="'+esc(tr('标题'))+'" value="'+esc(draft.title)+'"><div class="metadata"><span class="tag">' +
     (n.kind === "vault"
       ? tr("原始 Markdown")
       : n.kind==='concept'?esc(n.conceptStance||tr('讨论假设')):n.kind === "skill"
@@ -533,6 +555,7 @@ function bindInlineEditor(n){
   const draft=inlineDrafts.items.get(n.id),size=24000,page=readingPages.get(n.id)||0,start=page*size;
   let end=Math.min(draft.body.length,start+size);
   const status=()=>{if($('#inline-save-status'))$('#inline-save-status').textContent=tr(draft.status);if($('#inline-save'))$('#inline-save').disabled=draft.saving||!draft.dirty;};
+  $('#inline-delete').onclick=()=>workspaceControls.deleteNode(n.id,{dirty:draft.dirty});
   $('#inline-title').oninput=e=>{inlineDrafts.change(n.id,{title:e.target.value});status();};
   $('#inline-body').oninput=e=>{end=inlineDrafts.replaceRange(n.id,start,end,e.target.value);status();};
   $('#inline-save').onclick=async()=>{
@@ -567,7 +590,7 @@ function renderInspector() {
     $("#inspector").innerHTML =
       tr("<h3>分类与关系</h3>") +
       taxonomyFiltersHTML(kind)+
-      '<p class="metric">'+tr('概览球体按去重内容数增加体积，无10倍上限；展开后恢复原单节点尺寸。聚合显示不改变轨道、碰撞或相机距离。点击展开分支，查看全图收起；缩放不会展开。')+'</p>'+
+      '<p class="metric">'+tr('默认显示完整项目星云及全部所属节点；点击节点聚焦，查看全图显示整个星云。项目筛选仍生效，文字随距离缩小、隐藏。')+'</p>'+
       categoryFilterHTML(kind) +
       tr('<h4>关系类型 · 多选筛选</h4><button class="text-button" id="select-all">全部显示</button>') +
       relationDisplayTypes(state.types)
@@ -971,7 +994,7 @@ function settingsDialog() {
   const s = state.settings;
   modal(
     tr("显示参数 · 可调初值"),
-    '<p class="subtle">'+tr('概览球体按去重内容数增加体积，无10倍上限；展开后恢复原单节点尺寸。聚合显示不改变轨道、碰撞或相机距离。点击展开分支，查看全图收起；缩放不会展开。')+'</p><div class="two-col">' +
+    '<p class="subtle">'+tr('默认显示完整项目星云及全部所属节点；点击节点聚焦，查看全图显示整个星云。项目筛选仍生效，文字随距离缩小、隐藏。')+'</p><div class="two-col">' +
       [
         ["baseRadius", tr("基础半径"), 0.2, 5, 0.1],
         ["growth", tr("每条连接增长比例"), 0, 0.1, 0.001],
@@ -1541,7 +1564,7 @@ const uiIcons = {
   network:
     '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="11" cy="19" r="2"/><path d="m7 6 10-1M6 8l4 9m8-10-6 10"/>',
 };
-for (const b of document.querySelectorAll(".side-link")) {
+for (const b of document.querySelectorAll(".side-link[data-view]")) {
   const span = b.querySelector("span");
   if (span)
     span.innerHTML =
@@ -1568,14 +1591,34 @@ $("#ribbon-search").onclick = () => {
 };
 $("#ribbon-import").onclick = importDialog;
 $("#ribbon-jobs").onclick = jobsDialog;
+const workspaceControls=initWorkspaceControls({getState:()=>state,refresh,onError:error=>toast(error.message)});
+$("#ribbon-task-start").onclick=workspaceControls.start;
+$("#ribbon-task-pause").onclick=()=>controlTasks("pause");
 
 
 $('#mcp-connect-open').onclick=mcpDialog;
+function paintAIConnection(entry){
+ const button=document.querySelector('[data-ai-entry="'+entry.id+'"]');if(!button)return;
+ const fresh=entry.checkedAt&&Date.now()-Date.parse(entry.checkedAt)<90000;
+ const connected=entry.detected===true&&entry.ready===true&&fresh;
+ button.classList.toggle('ai-connected',!!connected);
+ button.dataset.connection=connected?'connected':entry.detected&&fresh?'unavailable':'unchecked';
+ const name=({gpt:'GPT',claude:'Claude',gemini:'Gemini',local:tr('本地 AI')})[entry.id];
+ const status=connected?tr('已连接'):entry.detected&&fresh?tr(entry.status):tr('尚未检测');
+ button.title=name+' · '+status+(entry.checkedAt?' · '+entry.checkedAt:'');button.setAttribute('aria-label',name+' · '+status);
+}
+async function refreshAIConnections({detect=false}={}){
+ try{const response=await fetch('/api/ai-connections');if(!response.ok)throw Error('unavailable');const info=await response.json();for(const entry of info.families)paintAIConnection(entry);
+ if(detect)await Promise.allSettled(info.families.map(async entry=>{try{const r=await fetch('/api/ai-connections/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({family:entry.id})});if(!r.ok)throw Error('unavailable');paintAIConnection(await r.json());}catch{paintAIConnection({id:entry.id});}}));
+ }catch{document.querySelectorAll('[data-ai-entry]').forEach(b=>paintAIConnection({id:b.dataset.aiEntry}));}
+}
+refreshAIConnections({detect:true});
+setInterval(()=>{if(!document.hidden)refreshAIConnections({detect:true});},60000);
 async function aiConnectionDialog(family){
   const name=({claude:'Claude',gemini:'Gemini',gpt:'GPT',local:tr('本地 AI')})[family];
   modal(name+' · '+tr('连接'),'<p>'+tr('点击开始后，仅检查本机兼容客户端、已有配置和指定本地服务，不调用模型、不切换当前分析。')+'</p><p class="metric">'+tr('网页登录不等于本机模型 API。MCP 用于只读知识检索，不能代替模型推理连接。')+'</p><button type="button" id="ai-detect-start">'+tr('开始检测')+'</button><div id="ai-connection-result" role="status"></div>',null);
   $('#ai-detect-start').onclick=async event=>{const context=currentButtonAction();event.target.disabled=true;const host=$('#ai-connection-result');host.textContent=tr('正在检查本机连接…');try{
-    const response=await fetch('/api/ai-connections/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({family})});const result=await response.json();if(!response.ok)throw Error(result.error||tr('当前后台尚未加载 AI 连接入口'));
+    const response=await fetch('/api/ai-connections/detect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({family})});const result=await response.json();if(!response.ok)throw Error(result.error||tr('当前后台尚未加载 AI 连接入口'));paintAIConnection(result);
     host.innerHTML='<p><strong>'+esc(tr(result.status))+'</strong></p>'+(result.connection?'<p>'+esc(result.connection.provider+' · '+result.connection.model)+'</p>':'')+(result.services?.length?'<ul>'+result.services.map(s=>'<li>'+esc(s.endpoint)+' · '+esc(s.models.join('、')||tr('尚未加载模型'))+'</li>').join('')+'</ul>':'')+'<ol>'+result.steps.map(step=>'<li>'+esc(tr(step))+'</li>').join('')+'</ol><p class="metric">'+tr('当前分析继续使用原接入。新增登录、凭证和授权由你完成，不会自动启用公网连接。')+'</p><button type="button" id="ai-model-config">'+tr('模型接入配置')+'</button> <button type="button" id="ai-mcp-config">'+tr('MCP 只读知识连接')+'</button>';
     if(result.ready){host.insertAdjacentHTML('beforeend','<p><button type="button" id="ai-use-new-tasks">'+tr('仅用于接下来新建的独立任务')+'</button></p>');$('#ai-use-new-tasks').onclick=()=>{pendingLayerProvider=family;toast(name+' · '+tr('已用于新任务；当前处理保持原接入'));$('#modal').close();};}
     actionResult(context,{message:tr(result.status)});$('#ai-model-config').onclick=()=>aiConnectionConfigDialog(family);$('#ai-mcp-config').onclick=mcpDialog;
@@ -1584,6 +1627,6 @@ async function aiConnectionDialog(family){
 document.querySelectorAll('[data-ai-entry]').forEach(button=>button.onclick=()=>aiConnectionDialog(button.dataset.aiEntry));
 async function aiConnectionConfigDialog(family){
   try{const response=await fetch('/api/ai-connections');if(!response.ok)throw Error(tr('当前后台尚未加载 AI 连接入口'));const info=await response.json(),c=info.saved?.[family]||{},providers=({claude:[['http','HTTP / OpenAI 兼容']],gemini:[['gemini','Gemini Interactions'],['http','HTTP / OpenAI 兼容']],gpt:[['codex','Codex CLI'],['http','HTTP / OpenAI 兼容']],local:[['local','本地 AI / OpenAI 兼容']]})[family];
-    modal(tr('独立连接配置'),'<p>'+tr('此配置仅属于当前入口，不改变正在处理资料的模型。由你完成新增登录或密钥授权；这里只填写环境变量名。')+'</p><label class="field">'+tr('接入方式')+'<select name="provider">'+providers.map(([id,label])=>'<option value="'+id+'"'+(c.provider===id?' selected':'')+'>'+esc(tr(label))+'</option>').join('')+'</select></label>'+[['model','模型名',c.model],['endpoint','服务基础地址',c.endpoint],['keyEnv','密钥环境变量名（不填写密钥本身）',c.keyEnv]].map(([key,label,value])=>'<label class="field">'+esc(tr(label))+'<input name="'+key+'" value="'+esc(value||'')+'" autocomplete="off"></label>').join(''),async form=>{await api('ai-connections/configure',{family,...Object.fromEntries(form),reasoningEffort:'low'});toast(tr('独立连接已保存；当前处理保持原接入'));});
+    modal(tr('独立连接配置'),'<p>'+tr('此配置仅属于当前入口，不改变正在处理资料的模型。由你完成新增登录或密钥授权；这里只填写环境变量名。')+'</p><label class="field">'+tr('接入方式')+'<select name="provider">'+providers.map(([id,label])=>'<option value="'+id+'"'+(c.provider===id?' selected':'')+'>'+esc(tr(label))+'</option>').join('')+'</select></label>'+[['model','模型名',c.model],['endpoint','服务基础地址',c.endpoint],['keyEnv','密钥环境变量名（不填写密钥本身）',c.keyEnv]].map(([key,label,value])=>'<label class="field">'+esc(tr(label))+'<input name="'+key+'" value="'+esc(value||'')+'" autocomplete="off"></label>').join(''),async form=>{await api('ai-connections/configure',{family,...Object.fromEntries(form),reasoningEffort:'low'});paintAIConnection({id:family});toast(tr('独立连接已保存；当前处理保持原接入'));});
   }catch(error){toast(error.message);}
 }

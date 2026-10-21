@@ -1,5 +1,5 @@
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publicationLanguage": "en",
   "canonicalReadme": "README.md",
   "publicDocuments": [
@@ -32,7 +32,8 @@
     "docs/SCREENSHOTS-0.6.0.md",
     "examples/sample-conversation.md",
     "examples/sample.md",
-    "templates/concept.md"
+    "templates/concept.md",
+    "UPDATE-NOTES-0.7.0.md"
   ],
   "screenshots": "Eleven real Chrome captures of synthetic English sample data; no live extraction.",
   "thirdPartyNotices": "Retained unchanged."

@@ -1,9 +1,16 @@
 # Changes
 
-## Unreleased
+## 0.7.0 — 2026-10-21
 
-- Share the existing thirteen-color activity palette and legends across Vault, AI Knowledge, AI Skills and Concept Cloud.
-- Apply the same palette to main-category labels using unique membership counts; preserve activity evidence, explicit priority gold and orbital behavior.
+- Organize all four networks by evidenced project membership, retaining domains and unassigned content.
+- Show complete nebulae by default; focus and Fit all no longer collapse descendants.
+- Add confirmed editable analysis templates, explicit selected-layer reanalysis and separate help.
+- Integrate incremental sync, truthful source status, saved checkpoints and existing pause/resume controls.
+- Add exact-scope permanent deletion previews and Delete beside Save on all four content pages.
+- Highlight AI ribbon connections only after fresh successful checks, with visible failure/unchecked states.
+- Share thirteen activity colors across all networks and double main-planet row capacities.
+
+[Detailed changes, validation and limitations](UPDATE-NOTES-0.7.0.md).
 
 ## 0.6.0 — 2026-10-19
 

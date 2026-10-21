@@ -1596,3 +1596,26 @@ dialog { width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-he
 @media(max-width:540px) { .two-col { grid-template-columns:minmax(0,1fr); }.dialog-actions { gap:8px; } }
 .knowledge-project-controls { display:flex;flex-wrap:wrap;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line); }
 .knowledge-project-controls label.field { flex:1;min-width:180px;margin:0; }
+
+.task-control-status { width:6px;height:6px;border-radius:50%;background:#777;font-size:0;flex:none; }
+.task-control-status[data-phase="enabled"] { background:#63cf8b; }
+.task-control-status[data-phase="pausing"] { background:#e9c754; }
+.ribbon button:disabled { opacity:.45;cursor:default; }
+/* Local workspace management: independently scrolling content and explicit scope. */
+.workspace-controls{width:min(920px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:20px;overflow:auto;background:var(--bg,#191919);color:var(--text,#ddd);border:1px solid #444;border-radius:10px;box-sizing:border-box}
+.workspace-controls::backdrop{background:#0009}
+.workspace-dialog-heading,.workspace-controls nav,.workspace-actions{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.workspace-controls nav{justify-content:flex-start;margin:10px 0}
+.workspace-controls label{display:block;margin:12px 0}
+.workspace-controls textarea{display:block;box-sizing:border-box;width:100%;min-height:180px;max-height:45dvh;padding:12px;font:inherit;line-height:1.6;resize:vertical}
+.workspace-controls input:not([type=checkbox]),.workspace-controls select{max-width:100%;box-sizing:border-box;padding:7px;margin-left:8px}
+.workspace-controls code{display:block;overflow-wrap:anywhere;font-size:12px;white-space:normal}
+.workspace-controls article{border-bottom:1px solid #444;padding:10px 0}
+.workspace-object-list{max-height:280px;overflow:auto;padding:8px;border:1px solid #444}
+.workspace-object-list label{margin:8px 0;padding:4px}
+.workspace-feedback[data-error=true],.permanent-delete-warning{color:#ff9f9f}
+.permanent-delete-warning{border:2px solid #d65353;padding:16px;font-size:20px}
+.workspace-controls .danger{border:1px solid #d65353;color:#ffb4b4}
+
+.ai-ribbon-entries button.ai-connected {color:#a0ecc4;background:#163b2a;box-shadow:inset 0 0 0 1px #438e68,0 0 9px #5ed39b33;position:relative;}
+.ai-ribbon-entries button.ai-connected::after {content:"";position:absolute;right:5px;bottom:5px;width:6px;height:6px;border-radius:50%;background:#82e7ac;box-shadow:0 0 5px #82e7ac;}

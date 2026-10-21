@@ -1,5 +1,8 @@
 # Venus — Your Personal Galaxy
 
+**Latest: 0.7.0 (2026-10-21)** — project-based full nebulae in all four networks, editable confirmed analysis templates, incremental sync and pause/resume, scoped permanent deletion beside Save, and real AI connection highlights. [Full update notes](UPDATE-NOTES-0.7.0.md). Historical 0.6.0 screenshots below predate this UI.
+
+
 You may be surprised by how much knowledge, creativity, and practical experience you've accumulated, once you can finally see how it all connects.
 
 > [!WARNING]
@@ -63,7 +66,7 @@ Continuous hierarchical orbits, bounded trails and exterior transfer channels sh
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.6.0**. See [changes](CHANGELOG.md).
+Current release: **0.7.0**. See [changes](CHANGELOG.md).
 
 ## Install and start
 
@@ -184,10 +187,14 @@ This release adds independent layer controls and network pause/resume, truthful 
 
 Text fields, editors, dialogs and floating panels now have consistent padding, line spacing and wrapping. Long dialog content scrolls independently while actions stay visible. The [published synthetic dialog example](docs/images/0.6.0/14-import.jpg) uses no personal material. Existing English demo screenshots remain illustrative and may predate these controls.
 
-## 0.6.0: projects and focused network detail
+## 0.7.0: projects and full nebula views
 
-Knowledge directories and networks share project-primary categories from reliable metadata and branch lineage. Topic subcategories remain usable across projects; uncertain ownership stays unassigned. Overview renders category roots plus loose nodes; selecting or locating a target reveals one branch, and clearing selection collapses it. Hidden descendants stop orbital computation. Aggregated overview volume and original detail sizing are separate, without changing orbit spacing or camera fit. All four networks (Vault, AI Knowledge, AI Skills and Concept Cloud) share thirteen stable activity colors. Content tiers use cited follow-up activity, active days and source reuse; main-category labels use unique membership counts with the same palette. Explicit priority projects remain gold.
+All four directories and networks use evidenced project identities, retaining domains as reference dimensions and leaving uncertain ownership unassigned. Every network displays all nodes by default. Selecting focuses; Fit all frames the full filtered nebula. Short labels remain distance-limited, and relation filters remain under user control. All four networks share thirteen activity colors; main stars use unique membership counts. See the update notes for editable templates, incremental sync, deletion and real connection indicators.
 
 The maintainer estimates this round used roughly one tenth of the older workflow's tokens (about 90% less), due to removing repeated semantic reviews and locally skipping unchanged completed content. This is an informal observation, not a benchmark or guarantee. No model calls were made to validate it.
 
-[Full changes and limitations](UPDATE-NOTES-0.6.0.md) · [15 current synthetic English screenshots](docs/SCREENSHOTS-0.6.0.md)
+[Full changes and limitations](UPDATE-NOTES-0.6.0.md) · [15 historical synthetic English screenshots](docs/SCREENSHOTS-0.6.0.md)
+
+The left tool ribbon includes **Start / resume checkpoints** and **Pause all tasks** beside Import Markdown. They control the existing configured extraction runner and independent layer queues, without selecting a new provider. Pause retains saved checkpoints and reports **Pausing** until owned requests exit; an external executor is reported separately and never acknowledged as fully paused. Resume does not reset isolated failures or individually paused files. Controls require the updated backend at its next normal start.
+
+Main-category planets orbit the primary in rows of **4, 8, 16, 32, ...**. Nested satellite and sub-satellite capacities, shared-tour packing, visibility freezing and animation pause rules retain their existing behavior.

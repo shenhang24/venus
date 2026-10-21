@@ -41,13 +41,13 @@ test('all network kinds retain one primary and orbit lesser centres',()=>{
  for(const kind of ['vault','knowledge','skill']){const l=new AffinityLayout(),nodes=[{id:'a',kind,isMainTag:true,domainConnectionCount:100},{id:'b',kind,isMainTag:true,domainConnectionCount:90}];l.sync({nodes,edges:[]});assert.equal(l.companionId,null);assert.deepEqual([...l.starIds],['a']);l.step();const before=structuredClone(l.positions);for(let i=0;i<100;i++)l.step();assert.deepEqual(l.positions.a,before.a);assert.ok(distance(l.positions.b,before.b)>.001);assert.ok(distance(l.positions.a,l.positions.b)>=l.orbitalClearance(1,0));}
 });
 
-test('planetary bands follow Fibonacci capacities with distinct initial positions',()=>{
+test('planetary bands double from four with distinct initial positions',()=>{
   const l=new AffinityLayout(),nodes=Array.from({length:73},(_,i)=>({id:'label'+String(i).padStart(2,'0'),isMainTag:true,domainConnectionCount:i===0?1000:100-i}));
   l.sync({nodes,edges:[],seeds:Object.fromEntries(nodes.map(n=>[n.id,[0,0,0]]))});
   const planets=Object.values(l.orbits).filter(o=>o.kind==='planet'),rings=new Map();
   for(const o of planets){if(!rings.has(o.ring))rings.set(o.ring,[]);rings.get(o.ring).push(o);}
-  assert.equal(planets.length,72);assert.equal(rings.size,9);
-  assert.deepEqual([...rings.values()].map(g=>g.length),[1,1,2,3,5,8,13,21,18]);
+  assert.equal(planets.length,72);assert.equal(rings.size,5);
+  assert.deepEqual([...rings.values()].map(g=>g.length),[4,8,16,32,12]);
   for(const group of rings.values()){assert.equal(new Set(group.map(o=>o.slot)).size,group.length);assert.equal(new Set(group.map(o=>o.targetRadius)).size,1);}
   l.step();assert.equal(new Set(nodes.map(n=>JSON.stringify(l.positions[n.id]))).size,73);
   for(const n of nodes)assert.ok(l.positions[n.id].every(Number.isFinite));

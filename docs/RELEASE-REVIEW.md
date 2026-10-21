@@ -21,3 +21,15 @@ Implementation validation passed 56 targeted checks. The public merged build and
 This update changes only heat mapping, main-category colors, legends, their generated browser bundle and related tests/documentation. Public priority defaults remain empty and Tunnel configuration remains user-supplied. No runtime data, private screenshots or provider configuration is included.
 
 The build and 20 targeted palette, category and visibility checks passed. The complete suite passed 315 of 330 checks; all 15 failures also occur on the unchanged 0.6.0 base (314 of 329). The added all-tier/all-network test passes; no new failing test names were observed. This comparison does not resolve the existing renderer, orbital and relation-history failures. The historical 0.6.0 gallery is not new visual evidence for this update.
+
+## Local task controls and planet-row update (included in 0.7.0)
+
+The ribbon controls reuse the configured runner and existing queues. Pausing rejects late output and waits for owned requests to exit before acknowledging completion; checkpoints, isolated failures and individually paused work remain intact. External workers are reported explicitly. Main-planet capacities double from four; nested satellite packing is retained. No backend or live model was stopped for validation.
+
+The build and 60 targeted queue/provider/pause/locale/visibility checks passed in both the public checkout and private source fixture tests. Updated planet-row assertions pass for all four network kinds. The full public suite passed 322 of 334 checks, with 12 failing names already present in the base; no newly failing names remain. This is bounded regression evidence, not resolution of those older failures. English synthetic browser checks on the registered preview port confirmed start, pausing and fully-paused states and a rendered planet network; no provider was called. This work is included in 0.7.0.
+
+## 0.7.0 publication review
+
+Only reviewed implementation modules, synthetic tests and English documentation are selected. The public user-supplied Tunnel setup is retained; account-specific private Tunnel defaults are excluded. No runtime data or local evidence images are copied. Build and 33 targeted checks pass. Browser checks used isolated synthetic data; full regression results are recorded below. See UPDATE-NOTES-0.7.0.md for capabilities and limits.
+
+Full public suite: ℹ tests 351, ℹ pass 339, ℹ fail 12. The same 12 failing names match the pre-existing layout, navigation/render and relation-history failures; they are not claimed fixed.

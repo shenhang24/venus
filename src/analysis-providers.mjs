@@ -43,9 +43,9 @@ export function createAnalysisProvider(meta,{fetchImpl=fetch,environment=process
   const runner=async(payload,{signal}={})=>{
     if(config.provider==='codex'){codex||=codexFactory(path.join(meta,'analysis-runtime'),{...config,usageMeta:meta,usageFamily});return codex(payload,{signal});}
     if(!description.configured)throw Error(description.status+'；未发送资料，不会切换到云端备用服务');
-    const selected=budgetPayload(currentMaterialInput(payload),config),prompt=analysisInstructions+JSON.stringify(selected);
+    const selected=budgetPayload(currentMaterialInput(payload),config),instructions=analysisInstructions+'\n若输入有 analysisTemplates，以确认模板决定正文结构和分析项，知识/技能写 body、概念写 explanation；模板不是事实证据。保留来源、认可准入与立场边界。',prompt=instructions+JSON.stringify(selected);
     if(prompt.length+JSON.stringify(analysisSchema).length>config.maxInputCharacters)throw Error('输入字符预算不足；原文未截断、尚未发送，请调整明确的分段或上下文预算');
-    if(adapters.has(config.provider)){const result=await adapters.get(config.provider)({config,schema:analysisSchema,instructions:analysisInstructions,environment})(selected,{signal});contract(analysisSchema,result);return result;}
+    if(adapters.has(config.provider)){const result=await adapters.get(config.provider)({config,schema:analysisSchema,instructions,environment})(selected,{signal});contract(analysisSchema,result);return result;}
     const headers={'Content-Type':'application/json'},key=config.keyEnv?environment[config.keyEnv]:null;
     let endpoint,body;
     if(config.provider==='gemini'){
@@ -54,7 +54,7 @@ export function createAnalysisProvider(meta,{fetchImpl=fetch,environment=process
     }else{
       endpoint=config.endpoint.replace(/\/$/,'');if(!endpoint.endsWith('/chat/completions'))endpoint+='/chat/completions';
       if(key)headers.Authorization='Bearer '+key;
-      body={model:config.model,messages:[{role:'system',content:analysisInstructions},{role:'user',content:JSON.stringify(selected)}],max_completion_tokens:config.maxOutputTokens,response_format:config.format==='schema'?{type:'json_schema',json_schema:{name:'venus_analysis',strict:true,schema:analysisSchema}}:{type:'json_object'},...(config.reasoningEffort?{reasoning_effort:config.reasoningEffort}:{})};
+      body={model:config.model,messages:[{role:'system',content:instructions},{role:'user',content:JSON.stringify(selected)}],max_completion_tokens:config.maxOutputTokens,response_format:config.format==='schema'?{type:'json_schema',json_schema:{name:'venus_analysis',strict:true,schema:analysisSchema}}:{type:'json_object'},...(config.reasoningEffort?{reasoning_effort:config.reasoningEffort}:{})};
       if(config.provider==='local'){body.max_tokens=body.max_completion_tokens;delete body.max_completion_tokens;}
       if(config.format==='json')body.messages[0].content+='\nJSON Schema: '+JSON.stringify(analysisSchema);
     }

@@ -19,15 +19,20 @@ export class AIConnections {
  saved(){try{return JSON.parse(fs.readFileSync(path.join(this.meta,'ai-connection-profiles.json')));}catch{return {};}}
  configure({family,...input}){if(!families.includes(family))throw Object.assign(Error('未知 AI 入口'),{status:400});const config=providerConfig(input),allowed={claude:['http'],gemini:['gemini','http'],gpt:['codex','http'],local:['local']};if(!allowed[family].includes(config.provider))throw Error('该入口的接入方式不匹配');const profiles=this.saved();profiles[family]=config;const file=path.join(this.meta,'ai-connection-profiles.json');fs.writeFileSync(file+'.tmp',JSON.stringify(profiles,null,2));fs.renameSync(file+'.tmp',file);this.results.delete(family);this.profiles.delete(family);return {saved:true,family,config:describeProvider(config,this.environment),currentAnalysisUnchanged:true,modelCallsStarted:false};}
  summary(){return {families:families.map(id=>({id,detected:false,...this.results.get(id)})),saved:Object.fromEntries(Object.entries(this.saved()).map(([id,config])=>[id,describeProvider(config,this.environment)])),active:this.active,modelCallsStarted:false,mcp:{purpose:'只读知识检索，不能代替模型推理连接',automaticallyEnabled:false}};}
- async detect({family}){
+ async detect({family,activeOnly=false}){
   if(!families.includes(family))throw Object.assign(Error('未知 AI 入口'),{status:400});
   this.profiles.delete(family);
-  const stored=this.saved()[family],config=stored||(family==='gpt'&&this.active?.provider==='codex'?this.active:readProviderConfig(this.meta)),configured=describeProvider(config,this.environment),result={id:family,detected:true,checkedAt:new Date().toISOString(),clientFound:false,ready:false,status:'尚未发现可直接复用的模型连接',steps:steps[family],modelCallsStarted:false,mcp:{purpose:'只读知识检索',enabledByThisCheck:false}};
-  const matches=!!stored||(family==='gpt'?config.provider==='codex':family==='gemini'?config.provider==='gemini':family==='claude'?config.provider==='http'&&/claude/i.test(config.model):config.provider==='local');
+  const stored=activeOnly?null:this.saved()[family],config=stored||(activeOnly&&this.active?this.active:family==='gpt'&&this.active?.provider==='codex'?this.active:readProviderConfig(this.meta)),configured=describeProvider(config,this.environment),result={id:family,detected:true,checkedAt:new Date().toISOString(),clientFound:false,ready:false,status:'尚未发现可直接复用的模型连接',steps:steps[family],modelCallsStarted:false,mcp:{purpose:'只读知识检索',enabledByThisCheck:false}};
+  const matches=activeOnly||!!stored||(family==='gpt'?config.provider==='codex':family==='gemini'?config.provider==='gemini':family==='claude'?config.provider==='http'&&/claude/i.test(config.model):config.provider==='local');
   if(family!=='local'){
    const client=await this.findClient(family);result.clientFound=!!client;
    if(family==='gpt'&&client){try{const {stdout,stderr}=await this.exec(client,['login','status'],{windowsHide:true,timeout:5000,maxBuffer:16000});result.authenticated=/logged in|已登录/i.test(stdout+' '+stderr)&&!/not logged in|未登录/i.test(stdout+' '+stderr);}catch{result.authenticated=false;}}
-   if(matches&&configured.configured&&(config.provider!=='codex'||result.authenticated)){result.ready=true;result.status='已有模型连接可复用；本次未调用模型';result.connection={provider:config.provider,model:config.model};this.profiles.set(family,config);}
+   let reachable=config.provider==='codex'&&result.authenticated;
+   if(matches&&configured.configured&&config.provider!=='codex'){
+    const base=(config.endpoint||(config.provider==='gemini'?'https://generativelanguage.googleapis.com/v1beta':'')).replace(/\/$/,'').replace(/\/chat\/completions$/,'');
+    try{const key=config.keyEnv&&this.environment[config.keyEnv],headers=key?(config.provider==='gemini'?{'x-goog-api-key':key}:{Authorization:'Bearer '+key}):{};const response=await this.fetchImpl(base+'/models',{headers,signal:AbortSignal.timeout(5000),redirect:'error'});if(response.ok){const body=await response.json(),models=(body.data||body.models||[]).map(m=>m.id||m.name);reachable=models.some(m=>m===config.model||m==='models/'+config.model);result.endpointReachable=true;result.modelListed=reachable;}}catch{result.endpointReachable=false;}
+   }
+   if(matches&&configured.configured&&reachable){result.ready=true;result.status='已有模型连接可复用；本次未调用模型';result.readiness=config.provider==='codex'?'cli-authenticated; inference-and-save-not-yet-tested':'model-endpoint-verified; inference-and-save-not-yet-tested';result.connection={provider:config.provider,model:config.model};this.profiles.set(family,config);}
    else if(client)result.status=family==='gpt'?'已发现本机客户端，尚未确认登录':'已发现本机客户端；网页或客户端登录不等于可用的模型 API，需配置兼容连接';
   }else{
    const endpoints=new Set(['http://127.0.0.1:11434/v1/models','http://127.0.0.1:1234/v1/models']);

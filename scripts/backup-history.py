@@ -23,7 +23,7 @@ def atomic_json(path, data):
     os.replace(tmp, path)
 
 def api(route, data=None):
-    req = Request('http://127.0.0.1:10001/api/' + route,
+    req = Request(os.environ.get('VENUS_BACKUP_URL','http://127.0.0.1:10001').rstrip('/') + '/api/' + route,
                   data=None if data is None else json.dumps(data, ensure_ascii=False).encode(),
                   headers={'Content-Type': 'application/json'})
     with urlopen(req, timeout=90) as response:

@@ -1,25 +1,29 @@
-# Venus 0.6.0
+# Venus 0.7.0 — 2026-10-21
 
-## Project organization and selective network detail
+## Projects and full nebula views
 
-AI knowledge now uses project identities shared by its directory and network. Existing source mappings, explicit metadata and branch lineage group continuations into the same project primary category. Topic subcategories and cross-project themes remain available. Manual membership wins, same-name projects retain separate identities, and ambiguous material remains unassigned. Sources and user edits are preserved; this does not regenerate the knowledge library.
+Vault, AI Knowledge, AI Skills and Concept Cloud all use explicitly evidenced projects as their primary stars and groups. Domains remain reference/filter dimensions. Cross-project membership retains one node identity; unknown membership remains Awaiting project assignment. Manual project assignment preserves original Markdown and evidence.
 
-All four networks now show category roots and ungrouped floating nodes in overview. Selecting a root or node expands only its branch. Locate can reveal a hidden target; clearing selection, background click and Fit all collapse detail. Zoom alone never expands the library. Hidden descendants are omitted from rendered instances and active orbital, collision and shared-tour computation; their positions and clocks freeze. Reopening does not catch up hidden elapsed time. Pause state remains intact.
+All four networks show the complete nebula by default, including planets and nested satellites. Selecting a node focuses it; Fit all frames the full visible nebula instead of collapsing branches. Explicit filters still apply. Short labels shrink or hide with distance; showing every node does not force every label or relationship line on. Main-planet row capacities double from four; existing bounded satellite orbits remain.
 
-Collapsed aggregate volume follows unique contained content nodes, with a cube-root conversion to display radius and no tenfold aggregate cap. Expanded detail restores the original individual sizing and cap. Appearance and size transition smoothly; display radius does not change physical orbit spacing, collision radii or camera fit.
+## Editable analysis structure
 
-Vault has thirteen stable activity color tiers, with intermediate colors added to its existing progression and a matching legend. Scores still use substantive activity, days and source evidence. This does not turn orbital hierarchy into thirteen levels or change the other three networks' six-color palettes.
+Knowledge, skill and concept templates use Markdown: # defines the theme and ## defines editable analysis items. Add, rename or remove items, save a draft, then confirm the template. Separate help text is excluded from model judgment input. Confirmation alone does not reprocess the library. Explicitly select sources and one analysis layer to reanalyze with preserved evidence, prior versions and manual-edit protection.
 
-## Token-use observation
+## Incremental sync and task controls
 
-The maintainer estimates that token use in this round was roughly one tenth of the older workflow, or about 90% lower. This is an informal observation, not a controlled benchmark, exact comparison or guarantee for other tasks. Repeated semantic reviews were removed, and local fingerprints skip unchanged completed ranges, including valid zero-concept results. Actual savings depend on changed input, coverage gaps, provider and model. No extra model calls or comparison runs were made to validate this estimate.
+The existing ribbon start/resume control now integrates Update sync / resume, with Fully pause and saved progress. The source panel shows actual capabilities, checkpoints, current work and gaps. Configured local Markdown sources are read incrementally, deduplicated and read back before checkpoints advance. Existing conversation caches and accessible local task records use the established backup workflow; no duplicate model queue is created.
 
-## Screenshots, validation and boundaries
+GPT/cloud and Dots account histories require an authorized host or signed-in browser reader. The backend cannot promise direct history access on every platform. Connection detection is separate from successful inference and saved results. Existing model configuration remains unchanged.
 
-Fifteen new actual browser screenshots use only isolated synthetic English notes and project metadata, with no live analysis calls. They show four content pages, overview and selected detail in all four networks, logs, import and connection dialogs. The receipt records 1280×720 capture, node counts and visible/active counts. Captures retain the development base-version footer (0.3.6); the feature code is this release candidate. See [screenshots](docs/SCREENSHOTS-0.6.0.md).
+## Deletion and connection indicators
 
-56 targeted checks passed, with no unresolved failure. Browser checks covered all four networks, hidden-target locate, cancel, zoom while paused, project grouping and empty intersections. The merged public package is built separately. These checks do not certify every private-library scale or every repository test.
+Every Vault, knowledge, skill and concept detail page has Delete beside Saved / Save. It opens the exact selected object preview, including real paths, related links and dependent-source effects. Permanent execution remains disabled until the user explicitly confirms the irreversible-deletion warning. History copies are a separate choice; external originals, backup caches and execution logs are not silently removed. Changed files, expired previews and active work block unsafe execution. Validation used synthetic temporary data only.
 
-The private processing service was not restarted and gap extraction was not interrupted. Refreshed frontend project organization, branch visibility and Vault colors are loaded. Backend classification-metadata preservation and heat derivation become active at the next normal backend load; an in-flight model retains its existing input. No full-library re-extraction, repeated content review or external fact checking is introduced.
+AI ribbon entries highlight green only after a fresh real connection check reports ready. Unavailable or unchecked entries remain dim; tooltips expose status and check time. Checks refresh every minute while the page is visible, expire after 90 seconds, do not invoke inference and do not switch the analysis model. Readiness is not a guarantee that the next inference will succeed.
 
-The public package excludes private material, project catalogs, account-specific tunnel identifiers, priority overrides, configuration, history, operational logs and personal images. Install with `npm ci` and `npm run build`; for viewing without automatic analysis, set `VENUS_ANALYSIS=0` before starting. See [architecture](docs/ARCHITECTURE.md) and [deployment](docs/DEPLOYMENT.md).
+## Validation and limits
+
+The public build and 33 targeted template, sync, deletion, project, visibility, task-control, provider and locale checks passed. Isolated browser checks showed all nodes in every network (7/7, 11/11, 8/8 and 10/10), exact single-object deletion previews on all four detail pages, and actual GPT readiness with other unavailable entries unhighlighted. These are small synthetic workloads, not a new large-library performance claim. Existing historical regression failures are reported separately in the release review.
+
+No private conversations, library Markdown, credentials, runtime configuration or local backup evidence are included. Earlier 0.6.0 screenshots remain historical captures and do not document the new full-nebula behavior. The implementation supersedes their selective-branch UI descriptions.

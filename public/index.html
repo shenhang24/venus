@@ -99,6 +99,9 @@
           >
             <path d="M12 5v14M5 12h14" />
           </svg></button
+        ><button type="button" id="ribbon-task-start" aria-label="开始／断点继续" title="开始／断点继续" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg></button
+        ><button type="button" id="ribbon-task-pause" aria-label="完全暂停任务" title="完全暂停任务" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button
+        ><span id="ribbon-task-status" class="task-control-status" role="status" aria-live="polite"></span
         ><span class="ribbon-spacer"></span>
         <div class="ai-ribbon-entries" role="group" aria-label="AI 连接入口">
           <button type="button" data-ai-entry="gpt" title="GPT" aria-label="GPT"><span class="ai-ribbon-mark" aria-hidden="true">GPT</span></button>
@@ -143,6 +146,7 @@
           </button>
           <button class="side-link" data-view="concept"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M8 14a6 6 0 1 1 8 0c-1 1-1 2-1 4H9c0-2 0-3-1-4Z"/></svg></span> 概念云 <span id="concept-count" class="count">0</span></button>
           <button class="side-link" data-view="journal"><span aria-hidden="true">≡</span> 日志 / 更新日志</button>
+          <button type="button" class="side-link" id="workspace-open"><span aria-hidden="true">⚙</span> 模板 / 同步 / 数据管理</button>
           <div id="files-host"></div>
         </div>
         <div class="network-navigation">

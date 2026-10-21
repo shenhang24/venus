@@ -1,7 +1,7 @@
 import {nodeRadiusFactor} from './layout.js';
 import {nodeTagHierarchy,tagHierarchy} from './taxonomy.js';
 import {VAULT_HEAT_LEVELS} from './vault-heat.js';
-export function mainTagNames(node){return nodeTagHierarchy(node).filter(tag=>tag.kind!=='unassigned'||tag.secondary.length>0).map(tag=>tag.key||tag.primary);}
+export function mainTagNames(node){return nodeTagHierarchy(node).map(tag=>tag.key||tag.primary);}
 export function matchesMainTag(node,name){if(!name)return true;const [primary,secondary]=name.split('::');return node.isMainTag?node.mainTag===primary:nodeTagHierarchy(node).some(tag=>(tag.key||tag.primary)===primary&&(!secondary||tag.secondary.includes(secondary)));}
 export function effectiveDegrees(edges){
   const seen=new Set(),degrees={};

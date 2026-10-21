@@ -424,6 +424,12 @@ export function fibonacciOrbitSlot(rank){
   while(rank-start>=capacity){start+=capacity;[capacity,next]=[next,capacity+next];row++;}
   return {row,capacity,slot:rank-start,page:Math.floor(row/KNOWLEDGE_LAYERS_PER_PLANE),layer:row%KNOWLEDGE_LAYERS_PER_PLANE};
 }
+// Planet rows double from four; nested satellites retain their existing packing.
+export function planetOrbitSlot(rank){
+  let row=0,start=0,capacity=4;
+  while(rank-start>=capacity){start+=capacity;capacity*=2;row++;}
+  return {row,capacity,slot:rank-start,page:Math.floor(row/KNOWLEDGE_LAYERS_PER_PLANE),layer:row%KNOWLEDGE_LAYERS_PER_PLANE};
+}
 export function satelliteOrbitSlot(rank,kind){
   if(kind!=='knowledge')return fibonacciOrbitSlot(rank);
   const page=Math.floor(rank/270),local=rank%270,layer=Math.floor((Math.sqrt(1+4*local/3)-1)/2),capacity=6*(layer+1),slot=local-3*layer*(layer+1);
@@ -661,7 +667,7 @@ export class AffinityLayout {
       if(this.starIds.has(node.id)){const radius=(this.collisionRadii[primary]+this.collisionRadii[i])*1.12;
         this.orbits[node.id]={host:this.coreId,kind:'star',binary:true,radius,targetRadius:radius,axis:[0,1,0],hostMass:this.masses[primary],launchKey:'binary:'+this.coreId};continue;}
       const rank=this.stablePlanetSlots.get(node.id).rank;
-      const {row:ring,slot,capacity:slots,page,layer}=fibonacciOrbitSlot(rank);
+      const {row:ring,slot,capacity:slots,page,layer}=planetOrbitSlot(rank);
       const maxPlanetRadius=Math.max(...cores.slice(1).map(c=>this.collisionRadii[nodeIndex.get(c.node.id)]),1);
       const nineAU=[...SOLAR_ORBIT_AU,39.482],band=ring%9,cycle=Math.floor(ring/9);
       const base=Math.max(spacing*3,this.collisionRadii[primary]+maxPlanetRadius*3);
@@ -1334,7 +1340,7 @@ export const UNASSIGNED_PROJECT='@unassigned-project';
 export const projectKey=id=>'@project:'+encodeURIComponent(id);
 export function explicitProjects(node){
  const out=new Map(),add=(p,basis)=>{if(typeof p==='string')p={name:p};if(!p||typeof p!=='object')return;const name=String(p.name||p.label||p.projectName||'').trim(),rawId=p.id||p.projectId;if(!name&&!rawId)return;const id=String(rawId||'named:'+normal(name));out.set(id,{id,name:name||id,basis:p.basis||basis,sourceIds:[node.id]});};
- const members=node.classification?.projectMemberships;if(Array.isArray(members))for(const p of members)add(p,'saved-project-metadata');
+ const members=node.classification?.projectMemberships;if(Array.isArray(members)){for(const p of members)add(p,'saved-project-metadata');return [...out.values()];}
  for(const p of Array.isArray(node.projects)?node.projects:typeof node.projects==='string'?[node.projects]:[])add(p,'explicit-project');
  if(node.projectId)add({id:node.projectId,name:node.projectName||node.project?.name},'explicit-project');
  for(const tag of [...(node.mainTags||[]),...(node.classification?.tags||[])]){const match=String(tag.name||'').match(/^(?:项目|Project)\s*[:：/·]\s*(.+)$/i);if(match)add({name:match[1]},'explicit-project-classification');}
@@ -1350,15 +1356,15 @@ export function projectGroups(nodes,jobs=[]){
  return [...groups.values()].map(g=>({...g,members:g.members.sort((a,b)=>a.order-b.order)}));
 }
 export function projectScopesFor(nodes,groups){
- const direct=new Map(),memo=new Map(),byId=new Map(nodes.map(n=>[n.id,n]));for(const n of nodes){const p=explicitProjects(n);if(p.length)direct.set(n.id,p);}for(const g of groups)for(const m of g.members)if(!direct.has(m.id))direct.set(m.id,[{id:g.id,name:g.name,basis:g.basis,sourceIds:[m.id]}]);
- const get=(id,seen=new Set())=>{if(direct.has(id))return direct.get(id);if(memo.has(id))return memo.get(id);if(seen.has(id))return [];seen.add(id);const result=new Map();for(const s of byId.get(id)?.sources||[])for(const scope of get(s.id,new Set(seen))){const old=result.get(scope.id);result.set(scope.id,{...scope,sourceIds:[...new Set([...(old?.sourceIds||[]),...(scope.sourceIds||[]),s.id])]});}const value=[...result.values()];memo.set(id,value);return value;};return new Map(nodes.map(n=>[n.id,get(n.id)]));
+ const direct=new Map(),memo=new Map(),byId=new Map(nodes.map(n=>[n.id,n]));for(const n of nodes){const p=explicitProjects(n);if(p.length||Array.isArray(n.classification?.projectMemberships))direct.set(n.id,p);}for(const g of groups.filter(g=>g.basis!=='branch-lineage'))for(const m of g.members)if(!direct.has(m.id))direct.set(m.id,[{id:g.id,name:g.name,basis:g.basis,sourceIds:[m.id]}]);
+ const get=(id,seen=new Set())=>{if(direct.has(id))return direct.get(id);if(memo.has(id))return memo.get(id);if(seen.has(id))return [];seen.add(id);const result=new Map();for(const s of [...(byId.get(id)?.sources||[]),...(byId.get(id)?.projectSourceIds||[]).map(id=>({id})),...(byId.get(id)?.importProvenance||[]).filter(p=>p.previousVersionNodeId).map(p=>({id:p.previousVersionNodeId}))])for(const scope of get(s.id,new Set(seen))){const old=result.get(scope.id);result.set(scope.id,{...scope,sourceIds:[...new Set([...(old?.sourceIds||[]),...(scope.sourceIds||[]),s.id])]});}const value=[...result.values()];memo.set(id,value);return value;};return new Map(nodes.map(n=>[n.id,get(n.id)]));
 }
 export function nodeTagHierarchy(node){
- const themes=themeHierarchy(node);if(node.kind!=='knowledge'||!node.knowledgeProjectOrganization)return themes;
+ const themes=themeHierarchy(node);if(!node.projectOrganization&&!node.knowledgeProjectOrganization)return themes;
  const topics=[...new Set([...themes.flatMap(t=>t.secondary.length?t.secondary.map(s=>t.primary+' / '+s):[t.primary]),...(node.categories||[])])].filter(name=>name!=='项目'&&!/^(?:项目|Project)\s*[:：/·]/i.test(name)).sort();
- const scopes=node.projectScopes||[];return scopes.length?scopes.map(p=>({primary:p.name,key:projectKey(p.id),projectId:p.id,kind:'project',secondary:topics,basis:p.basis,sourceIds:p.sourceIds||[]})):[{primary:'未归属项目',key:UNASSIGNED_PROJECT,kind:'unassigned',secondary:topics}];
+ const scopes=node.projectScopes||[];return scopes.length?scopes.map(p=>({primary:p.name,key:projectKey(p.id),projectId:p.id,kind:'project',secondary:topics,basis:p.basis,sourceIds:p.sourceIds||[]})):[{primary:'待归属',key:UNASSIGNED_PROJECT,kind:'unassigned',secondary:topics}];
 }
-export function organizeProjectKnowledge(state){const groups=projectGroups(state.nodes,state.jobs||[]),scopes=projectScopesFor(state.nodes,groups);return {...state,projectGroups:groups,nodes:state.nodes.map(n=>({...n,projectScopes:scopes.get(n.id)||[],...(n.kind==='knowledge'?{knowledgeProjectOrganization:true}:{})}))};}
+export function organizeProjectKnowledge(state){const groups=projectGroups(state.nodes,state.jobs||[]),scopes=projectScopesFor(state.nodes,groups);return {...state,projectGroups:groups,nodes:state.nodes.map(n=>({...n,projectScopes:scopes.get(n.id)||[],projectOrganization:true,...(n.kind==='knowledge'?{knowledgeProjectOrganization:true}:{})}))};}
 export function knowledgeProjectBuckets(nodes){const buckets=new Map();for(const n of nodes.filter(n=>n.kind==='knowledge'&&!n.mergedInto))for(const h of nodeTagHierarchy({...n,knowledgeProjectOrganization:true})){const key=h.key||h.primary;if(!buckets.has(key))buckets.set(key,{key,name:h.primary,projectId:h.projectId||null,kind:h.kind,nodes:[],topics:new Set()});const b=buckets.get(key);b.nodes.push(n);for(const t of h.secondary)b.topics.add(t);}return [...buckets.values()].map(b=>({...b,count:b.nodes.length,topics:[...b.topics].sort()})).sort((a,b)=>a.kind==='unassigned'?1:b.kind==='unassigned'?-1:a.name.localeCompare(b.name));}
 export function knowledgeTopicNames(node){return [...new Set([...themeHierarchy(node).flatMap(t=>[t.primary,...t.secondary]),...(node.categories||[])])].filter(Boolean);}
 
@@ -1391,7 +1397,7 @@ export const networkActivityHeat=vaultActivityHeat;
 
 
 
-export function mainTagNames(node){return nodeTagHierarchy(node).filter(tag=>tag.kind!=='unassigned'||tag.secondary.length>0).map(tag=>tag.key||tag.primary);}
+export function mainTagNames(node){return nodeTagHierarchy(node).map(tag=>tag.key||tag.primary);}
 export function matchesMainTag(node,name){if(!name)return true;const [primary,secondary]=name.split('::');return node.isMainTag?node.mainTag===primary:nodeTagHierarchy(node).some(tag=>(tag.key||tag.primary)===primary&&(!secondary||tag.secondary.includes(secondary)));}
 export function effectiveDegrees(edges){
   const seen=new Set(),degrees={};
@@ -1483,29 +1489,18 @@ import { heatText } from "/i18n.js";
 
 
 
-// Visibility follows saved membership and the layout's content hierarchy, never zoom.
+// All networks expose their full nebula. Selection changes focus, never membership visibility.
 export function branchVisibility(nodes,edges,orbits={},selection=null,allowed=null){
-  const byId=new Map(nodes.map(n=>[n.id,n])),children=new Map(),parents=new Map(),members=new Map();
-  const add=(map,key,value)=>{if(!map.has(key))map.set(key,new Set());map.get(key).add(value);};
-  for(const e of edges)if(e.membershipLink&&byId.get(e.from)?.isMainTag&&byId.has(e.to))add(members,e.from,e.to);
-  for(const n of nodes){const host=orbits[n.id]?.host;if(!n.isMainTag&&host&&byId.has(host)&&!byId.get(host).isMainTag){add(children,host,n.id);add(parents,n.id,host);}}
-  const descend=(id,result)=>{const todo=[id];while(todo.length){const next=todo.pop();if(result.has(next))continue;result.add(next);for(const child of children.get(next)||[])todo.push(child);}return result;};
-  const collections=new Map(),owned=new Set();
-  for(const n of nodes)if(n.isMainTag){const contained=new Set();for(const id of members.get(n.id)||[])descend(id,contained);collections.set(n.id,contained);for(const id of contained)owned.add(id);}
-  for(const n of nodes)if(!n.isMainTag&&!owned.has(n.id)&&!parents.has(n.id)&&children.has(n.id)){const contained=descend(n.id,new Set());contained.delete(n.id);collections.set(n.id,contained);for(const id of contained)owned.add(id);}
-  const visibleIds=new Set(nodes.filter(n=>n.isMainTag||!owned.has(n.id)&&!parents.has(n.id)).map(n=>n.id)),expanded=new Set();
-  if(byId.has(selection)){
-    expanded.add(selection);visibleIds.add(selection);
-    if(collections.has(selection))for(const id of collections.get(selection))visibleIds.add(id);
-    else descend(selection,new Set()).forEach(id=>visibleIds.add(id));
-    const todo=[selection],seen=new Set();while(todo.length){const id=todo.pop();if(seen.has(id))continue;seen.add(id);for(const parent of parents.get(id)||[]){visibleIds.add(parent);expanded.add(parent);todo.push(parent);}}
-    for(const [root,contained]of collections)if(contained.has(selection))expanded.add(root);
+  const byId=new Map(nodes.map(n=>[n.id,n]));
+  const visibleIds=new Set(nodes.filter(n=>!allowed||allowed.has(n.id)||n.isMainTag||n.id===selection).map(n=>n.id));
+  // Retain physical ancestors when an explicit filter selects a nested satellite.
+  for(const id of [...visibleIds]){
+    let host=orbits[id]?.host;const seen=new Set([id]);
+    while(host&&byId.has(host)&&!seen.has(host)){
+      seen.add(host);visibleIds.add(host);host=orbits[host]?.host;
+    }
   }
-  if(allowed)for(const id of visibleIds)if(!allowed.has(id)&&!byId.get(id)?.isMainTag&&id!==selection)visibleIds.delete(id);
-  // A visible body needs its physical ancestors, without activating their siblings.
-  for(const id of [...visibleIds]){let host=orbits[id]?.host,seen=new Set();while(host&&byId.has(host)&&!seen.has(host)){seen.add(host);visibleIds.add(host);host=orbits[host]?.host;}}
-  const aggregateCounts=new Map();for(const [id,contained]of collections)if(!expanded.has(id))aggregateCounts.set(id,[...contained].filter(child=>!allowed||allowed.has(child)).length);
-  return {visibleIds,aggregateCounts,expanded};
+  return {visibleIds,aggregateCounts:new Map(),expanded:new Set(visibleIds)};
 }
 
 // Visual volume only. Physics and camera framing continue to use detail radii.

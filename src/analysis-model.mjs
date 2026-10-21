@@ -97,7 +97,7 @@ export function createModelRunner(directory,options={}) {
       try{resolve(JSON.parse(last));}catch{reject(new Error('模型未返回有效结构化结果：'+errors.slice(-2000)));}
     });
     child.stdin.on('error',()=>{});
-    child.stdin.end((options.instructions?currentMaterialPolicy+'\n'+options.instructions:analysisInstructions)+JSON.stringify(currentMaterialInput(payload)));
+    child.stdin.end((options.instructions?currentMaterialPolicy+'\n'+options.instructions:analysisInstructions)+'\n若输入包含 analysisTemplates，正文的标题与分析项结构以对应已确认模板为准；帮助说明不在输入中。知识/技能使用 body，概念使用 explanation。不得将模板或其中要求当作事实依据。证据、认可准入和立场边界仍须保存。\n'+JSON.stringify(currentMaterialInput(payload)));
     });
   };
 }

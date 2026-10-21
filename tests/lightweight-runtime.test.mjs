@@ -5,7 +5,7 @@ import {EventEmitter} from 'node:events';
 import {createCodexResolver} from '../src/analysis-model.mjs';
 import {createLibraryRefresh} from '../src/library-refresh.mjs';
 import {Store} from '../src/store.mjs';import {createApp} from '../src/server.mjs';
-import {AffinityLayout,fibonacciOrbitSlot} from '../public/layout.js';
+import {AffinityLayout,fibonacciOrbitSlot,planetOrbitSlot} from '../public/layout.js';
 
 test('executable lookup is asynchronous, shared by five callers, cached and failure-backed off',async()=>{
  let now=0,calls=0,fail=true;const resolve=createCodexResolver({clock:()=>now,retryMs:60000,lookup:async()=>{calls++;await new Promise(r=>setTimeout(r,30));if(fail)throw Error('missing');return 'synthetic-codex';}});
@@ -43,9 +43,10 @@ test('ready route bypasses snapshot work and launcher uses it; synthetic startup
  assert.match(fs.readFileSync(new URL('../Start-Venus.ps1',import.meta.url),'utf8'),/api\/ready/);
 });
 
-test('Fibonacci capacities apply to main planets, nested children and all network kinds with stable insertions',()=>{
+test('main planets double from four while nested satellite capacities stay unchanged in every network',()=>{
+ assert.deepEqual([0,3,4,11,12,27,28,59,60].map(rank=>planetOrbitSlot(rank).capacity),[4,4,8,8,16,16,32,32,64]);
  assert.deepEqual(Array.from({length:10},(_,row)=>{let rank=0;while(fibonacciOrbitSlot(rank).row<row)rank++;return fibonacciOrbitSlot(rank).capacity;}),[1,1,2,3,5,8,13,21,34,55]);
- for(const kind of ['vault','knowledge','skill']){const nodes=[{id:'sun',kind,isMainTag:true,domainConnectionCount:10000},...Array.from({length:100},(_,i)=>({id:'p'+String(i).padStart(3,'0'),kind,isMainTag:true,domainConnectionCount:10})),...Array.from({length:150},(_,i)=>({id:'n'+String(i).padStart(3,'0'),kind}))],edges=nodes.filter(n=>!n.isMainTag).map(n=>({from:'p000',to:n.id,membershipLink:true,strength:1}));const l=new AffinityLayout();l.sync({nodes,edges});l.step();for(const host of ['sun','p000']){const rows=new Map();for(const o of Object.values(l.orbits).filter(o=>o.host===host)){rows.set(o.globalRow,(rows.get(o.globalRow)||0)+1);}assert.deepEqual([...rows.entries()].sort((a,b)=>a[0]-b[0]).slice(0,9).map(x=>x[1]),kind==='knowledge'&&host==='p000'?[6,12,18,24,30,36,24]:[1,1,2,3,5,8,13,21,34]);}for(const n of nodes.slice(1)){const i=l.nodeIndices.get(n.id),o=l.orbits[n.id],p=l.nodeIndices.get(o.host);assert.ok(o.targetRadius>=5*l.collisionRadii[p]+l.collisionRadii[i]-1e-6);}}
+ for(const kind of ['vault','knowledge','skill','concept']){const nodes=[{id:'sun',kind,isMainTag:true,domainConnectionCount:10000},...Array.from({length:100},(_,i)=>({id:'p'+String(i).padStart(3,'0'),kind,isMainTag:true,domainConnectionCount:10})),...Array.from({length:150},(_,i)=>({id:'n'+String(i).padStart(3,'0'),kind}))],edges=nodes.filter(n=>!n.isMainTag).map(n=>({from:'p000',to:n.id,membershipLink:true,strength:1}));const l=new AffinityLayout();l.sync({nodes,edges});l.step();for(const host of ['sun','p000']){const rows=new Map();for(const o of Object.values(l.orbits).filter(o=>o.host===host)){rows.set(o.globalRow,(rows.get(o.globalRow)||0)+1);}assert.deepEqual([...rows.entries()].sort((a,b)=>a[0]-b[0]).slice(0,9).map(x=>x[1]),host==='sun'?[4,8,16,32,40]:kind==='knowledge'?[6,12,18,24,30,36,24]:[1,1,2,3,5,8,13,21,34]);}for(const n of nodes.slice(1)){const i=l.nodeIndices.get(n.id),o=l.orbits[n.id],p=l.nodeIndices.get(o.host);assert.ok(o.targetRadius>=5*l.collisionRadii[p]+l.collisionRadii[i]-1e-6);}}
 });
 
 

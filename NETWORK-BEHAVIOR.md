@@ -1,3 +1,7 @@
+# Current network display — 0.7.0
+
+All four networks use projects as primary groups and display every node by default. Domain labels remain secondary. Click focuses; Fit all frames the full filtered nebula. Labels remain distance-limited and relation visibility remains user-controlled. Older selective-collapse and aggregate-size descriptions below are historical and superseded.
+
 # Network behavior
 
 Current display mode supersedes historical gravity descriptions below. The active

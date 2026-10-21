@@ -278,7 +278,7 @@ export class Store {
         ? hash(fs.readFileSync(rel))
         : null,
       features:{classification:true,dynamicLayout:true,activityHeat:true,continuousMerge:true,memorySnapshot:true,incrementalAnalysisReads:true,inlineTitleEdit:true,incrementalImportMetadata:true,concepts:true,conceptAdmission:true,skillMethods:true,knowledgeDedupeThreshold:.95},
-      version:'0.3.6',
+      version:'0.7.0',
       analysis:this.analyzer?.status()||{enabled:false,running:false,total:this.nodes.filter(n=>n.kind==='vault').length},
       revision: this.state.revision,
       nodes: summary ? this.nodes.map(({body, ...node}) => ({...node, bodyLength:body.length,
@@ -427,6 +427,8 @@ export class Store {
       domain: input.domain || "",
       occupations: input.occupations || "",
       projects: input.projects || [],
+      ...(input.analysisTemplate?{analysisTemplate:input.analysisTemplate}:existing?.analysisTemplate?{analysisTemplate:existing.analysisTemplate}:{}),
+      ...(input.epistemic?{epistemic:input.epistemic}:{}),
       decision: input.decision || "新增",
       ...(input.kind==='concept'?{conceptStance:input.conceptStance||existing?.conceptStance||'讨论假设',conceptReferences:input.conceptReferences||existing?.conceptReferences||[],managedBy:input.managedBy||existing?.managedBy||'manual'}:{}),
       ...(input.kind==='skill'&&methodPolicy?{methodPolicy}:{}),

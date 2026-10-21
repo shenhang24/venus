@@ -33,6 +33,12 @@ export function fibonacciOrbitSlot(rank){
   while(rank-start>=capacity){start+=capacity;[capacity,next]=[next,capacity+next];row++;}
   return {row,capacity,slot:rank-start,page:Math.floor(row/KNOWLEDGE_LAYERS_PER_PLANE),layer:row%KNOWLEDGE_LAYERS_PER_PLANE};
 }
+// Planet rows double from four; nested satellites retain their existing packing.
+export function planetOrbitSlot(rank){
+  let row=0,start=0,capacity=4;
+  while(rank-start>=capacity){start+=capacity;capacity*=2;row++;}
+  return {row,capacity,slot:rank-start,page:Math.floor(row/KNOWLEDGE_LAYERS_PER_PLANE),layer:row%KNOWLEDGE_LAYERS_PER_PLANE};
+}
 export function satelliteOrbitSlot(rank,kind){
   if(kind!=='knowledge')return fibonacciOrbitSlot(rank);
   const page=Math.floor(rank/270),local=rank%270,layer=Math.floor((Math.sqrt(1+4*local/3)-1)/2),capacity=6*(layer+1),slot=local-3*layer*(layer+1);
@@ -270,7 +276,7 @@ export class AffinityLayout {
       if(this.starIds.has(node.id)){const radius=(this.collisionRadii[primary]+this.collisionRadii[i])*1.12;
         this.orbits[node.id]={host:this.coreId,kind:'star',binary:true,radius,targetRadius:radius,axis:[0,1,0],hostMass:this.masses[primary],launchKey:'binary:'+this.coreId};continue;}
       const rank=this.stablePlanetSlots.get(node.id).rank;
-      const {row:ring,slot,capacity:slots,page,layer}=fibonacciOrbitSlot(rank);
+      const {row:ring,slot,capacity:slots,page,layer}=planetOrbitSlot(rank);
       const maxPlanetRadius=Math.max(...cores.slice(1).map(c=>this.collisionRadii[nodeIndex.get(c.node.id)]),1);
       const nineAU=[...SOLAR_ORBIT_AU,39.482],band=ring%9,cycle=Math.floor(ring/9);
       const base=Math.max(spacing*3,this.collisionRadii[primary]+maxPlanetRadius*3);

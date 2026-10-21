@@ -1,4 +1,5 @@
 let language = 'zh';
+const workspaceTranslations={'已连接':'Connected','尚未检测':'Not checked','删除':'Delete','更新同步／断点继续':'Update sync / resume','待归属':'Awaiting project assignment'};
 export function resolveLanguage(systemLanguage, browserLanguages = []) {
   const requested = systemLanguage || browserLanguages.find(Boolean) || 'en';
   return /^zh(?:-|$)/i.test(requested) ? 'zh' : 'en';
@@ -7,7 +8,7 @@ export function setLanguage(value) { language = resolveLanguage(value); }
 export function uiLocale() { return language === 'zh' ? 'zh-CN' : 'en'; }
 export function uiError(message) {
   if(language !== 'en') return message;
-  return translations[message] || 'Operation failed. Service details: ' + message;
+  return workspaceTranslations[message] || translations[message] || 'Operation failed. Service details: ' + message;
 }
 export async function initializeLanguage() {
   let systemLanguage;
@@ -30,7 +31,7 @@ export async function initializeLanguage() {
 const translations = {
   '只读原始 Vault，独立于知识和技能；仅提取本地覆盖缺口，不复审已保存概念。':'Reads original Vault independently of knowledge and skills. Extracts only local coverage gaps; saved concepts are not re-reviewed.',
   '/ 启明星':'/ Morning Star',
-  '概览球体按去重内容数增加体积，无10倍上限；展开后恢复原单节点尺寸。聚合显示不改变轨道、碰撞或相机距离。点击展开分支，查看全图收起；缩放不会展开。':'Overview volume follows unique content counts without a tenfold cap. Expanded nodes retain their original sizing. Aggregate display does not alter orbits, collisions or camera distance. Select to expand; Fit all collapses. Zoom does not expand.',
+  '默认显示完整项目星云及全部所属节点；点击节点聚焦，查看全图显示整个星云。项目筛选仍生效，文字随距离缩小、隐藏。':'Show the full project nebula and all its nodes by default. Select a node to focus; Fit all frames the entire nebula. Project filters remain active; labels shrink and hide with distance.',
   '所属项目':'Project', '全部项目':'All projects', '跨项目主题':'Topics across projects', '全部主题':'All topics', '未归属项目':'Unassigned project', '按来源项目映射归属':'Assigned by source project mapping', '暂无可靠项目归属':'No verified project assignment',
   '试验布局':'Test layout','24 域公转与共享节点':'24-domain orbits and shared nodes','原有连链试验':'Legacy chain test',
   '保存任意来源的原始 Markdown，保留原文。':'Preserve original Markdown from any source.',
@@ -81,7 +82,7 @@ const translations = {
   '本地只读 HTTP 接口：可用':'Local read-only HTTP interface: available',
   '本地只读 HTTP 接口：本次未确认':'Local read-only HTTP interface: not confirmed in this check',
   '<p>stdio MCP：由连接它的宿主启动；本页未检测进程状态。</p><p>Tunnel 客户端：未核实。平台插件注册：未核实。云端工具调用：未验证。</p><p>本机命令：</p>':'<p>stdio MCP: started by its connecting host; this page has not checked its process state.</p><p>Tunnel client: unverified. Platform plugin registration: unverified. Cloud tool invocation: unverified.</p><p>Local command:</p>',
-  '<p>本机配置模板：<code>codex-plugin/readonly.mcp.json</code></p><p>ChatGPT 连接路径：Plugins → + → Add custom MCP server → Tunnel。需要先配置官方 Tunnel 客户端。</p><p>本地 HTTP 可用不等于远程 MCP 已接通。此入口不会创建凭据、注册插件或开放公网。</p>':'<p>Local configuration template: <code>codex-plugin/readonly.mcp.json</code></p><p>ChatGPT connection: Plugins → + → Add custom MCP server → Tunnel. Configure the official Tunnel client first.</p><p>Local HTTP availability does not establish a remote MCP connection. This panel does not create credentials, register plugins or expose a public port.</p>',
+  '<p>本机配置模板：<code>I:\\Venus\\codex-plugin\\readonly.mcp.json</code></p><p>ChatGPT 连接路径：Plugins → + → Add custom MCP server → Tunnel。需要先配置官方 Tunnel 客户端。</p><p>本地 HTTP 可用不等于远程 MCP 已接通。此入口不会创建凭据、注册插件或开放公网。</p>':'<p>Local configuration template: <code>I:\\Venus\\codex-plugin\\readonly.mcp.json</code></p><p>ChatGPT connection: Plugins → + → Add custom MCP server → Tunnel. Configure the official Tunnel client first.</p><p>Local HTTP availability does not establish a remote MCP connection. This panel does not create credentials, register plugins or expose a public port.</p>',
   '当前分段 ':'Section ',' · 已保存 ':' · Saved ','MD 分段进度':'MD section progress',
   '大标签按归属节点去重计数：白0–2，绿3–9，蓝10–24，紫25–49，橙50–99，金100以上。三倍基础直径，每个连接再增加1%。':'Large labels count unique member nodes: white 0–2, green 3–9, blue 10–24, purple 25–49, orange 50–99, gold 100+. Their diameter starts at three times the base, then grows 1% per connection.',
   '归属连接':'Membership connections','按归属节点去重计数；颜色不代表技能程度。':'Unique member nodes determine the count; color does not indicate proficiency.',
@@ -257,7 +258,9 @@ Object.assign(translations,{
 });
 Object.assign(translations,{'最近请求均速：':'Latest request average: ','均速：暂未返回':'Average speed: not yet returned'});
 Object.assign(translations,{'概念模板读取失败':'Could not read the concept template','概念范围读取失败':'Could not read the concept scope','讨论假设':'Discussion hypothesis','旧记录保留，未标注用户认可；仅供参考，不覆盖当前指示。':'Legacy record retained without a user-endorsement label; reference only, never overriding current instructions.'});
+Object.assign(translations,{'开始／断点继续':'Start / resume checkpoints','完全暂停任务':'Pause all tasks','任务已启用，按保存断点继续':'Tasks enabled; continuing saved checkpoints','正在暂停，等待当前请求退出':'Pausing; waiting for active requests to exit','任务已完全暂停，已保存断点保留':'All tasks paused; saved checkpoints retained','任务未启用，已保存断点保留':'Tasks stopped; saved checkpoints retained','任务控制将在后台下次正常启动后可用':'Task controls will be available after the next normal backend start','独立执行器仍在退出，尚未完全暂停':'An external executor is still active; full pause is not confirmed','任务已全局暂停，请使用开始／断点继续':'All tasks are paused; use Start / resume checkpoints','任务仍在退出，请等待暂停完成后继续':'Tasks are still exiting; wait before resuming','任务控制操作无效':'Invalid task control action'});
 export function tr(value) {
+  if(language==='en'&&Object.hasOwn(workspaceTranslations,value))return workspaceTranslations[value];
   if(language !== 'en' || typeof value !== 'string') return value;
   if(Object.hasOwn(translations,value))return translations[value];
   return value.replace(pattern, key=>translations[key]);

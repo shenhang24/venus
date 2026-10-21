@@ -15,6 +15,12 @@ import {AIConnections} from './ai-connections.mjs';
 import {ExecutionJournal,errorCode} from './execution-journal.mjs';
 import {ReviewControl} from './review-control.mjs';
 import {ConceptRecheck} from './concept-recheck.mjs';
+import {TaskControl} from './task-control.mjs';
+import {AnalysisTemplates} from './analysis-templates.mjs';
+import {WorkspaceSync} from './workspace-sync.mjs';
+import {DataMaintenance} from './data-maintenance.mjs';
+import {assignProjects} from './project-membership.mjs';
+import {attachBackupProjectLineage} from './project-organization.mjs';
 import {readUsageSummary} from './usage-meter.mjs';
 import {projectGroups,projectScopesFor,nodeTagHierarchy} from '../public/taxonomy.js';
 export const project = path.resolve(
@@ -27,6 +33,7 @@ export function createApp({
   onLifecycle = null,
   analysisRunner = null,
   connectionOptions = {},
+  workspaceOptions = {},
   displayLanguageOverride = null,
   reviewLauncher = null,
   enableAnalysis = false,
@@ -36,16 +43,25 @@ export function createApp({
     clients = new Set();
   store.backgroundRefresh=true;
   const provider=createAnalysisProvider(store.meta);
+  const templates=new AnalysisTemplates(store.meta);store.analysisTemplates=templates;
+  const runner=templates.wrap(analysisRunner||provider.runner);
   const readonlyQuery=createReadQuery(store);
   const concepts=new ConceptExtractor(store);
-  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner:analysisRunner||provider.runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true,conceptExtractor:concepts}):null;
+  const analyzer=enableAnalysis?new AutoAnalyzer(store,{runner,chunkSize:provider.config.chunkCharacters,maxConcurrent:5,enableMainTagBackfill:true,conceptExtractor:concepts}):null;
   const connections=new AIConnections(store.meta,{active:provider.description,...connectionOptions});
   const journal=new ExecutionJournal(store.meta,path.resolve(store.root,'../work'));
-  const layers=analyzer?new LayerPipeline(store,{analyzer,concepts,query:readonlyQuery,runner:analysisRunner||provider.runner,connectionRunner:family=>connections.runnerFor(family),eventSink:event=>journal.append(event)}):null;
+  const layers=analyzer?new LayerPipeline(store,{analyzer,concepts,query:readonlyQuery,runner,connectionRunner:family=>templates.wrap(connections.runnerFor(family)),eventSink:event=>journal.append(event)}):null;
   const reviewControl=new ReviewControl({project:path.resolve(store.root,'..'),meta:store.meta,journal,analysis:()=>analyzer?.status(),launcher:reviewLauncher});
+  const tasks=new TaskControl({analyzer,layers,reviewControl,provider:provider.description,journal});
+  store.taskControl=tasks;
+  const workspaceSync=new WorkspaceSync(store,{tasks,connections,port,project,...workspaceOptions});
+  tasks.onPause=()=>workspaceSync.pause();
+  const maintenance=new DataMaintenance(store,{projectNodes:nodes=>attachBackupProjectLineage(nodes,projectLedger()),busy:(ids,keys)=>(keys.includes('tasks')||ids.length>0)&&(workspaceSync.running||!!reviewControl.worker()||[...(analyzer?.active.keys()||[]),...(layers?.active.keys()||[])].some(key=>keys.includes('tasks')||ids.some(id=>key.includes(id))))});
   const recheck=new ConceptRecheck(store,{journal,workerRunning:()=>!!reviewControl.worker()});
   const systemDisplayLanguage=displayLanguageOverride||readWindowsDisplayLanguage();
   let revision = store.state.revision;
+  let projectLedgerCache={stamp:null,value:{}};
+  const projectLedger=()=>{try{const file=path.resolve(store.root,'../work/daily-backup/ledger.json'),stat=fs.statSync(file),stamp=stat.mtimeMs+':'+stat.size;if(projectLedgerCache.stamp!==stamp)projectLedgerCache={stamp,value:JSON.parse(fs.readFileSync(file,'utf8'))};return projectLedgerCache.value;}catch{return {};}};
   const json = (res, data, status = 200) => {
     if(res.venusAction){const a=res.venusAction;journal.append({kind:status>=400?'error':a.route.includes('control')?'recovery':'operation',action:a.route,status:status>=400?'failed':data.fastPassed||data.structuralPassed?'verified-skip':data.manualRequired?'not-started':data.skipped?'skipped':data.accepted||data.queued?'accepted':'saved',sourceId:a.sourceId,code:status>=400?errorCode(data.error):undefined,error:status>=400?{original:data.error,disposition:'request-failed'}:null});}
     res.writeHead(status, {
@@ -69,6 +85,10 @@ export function createApp({
       if(req.method==='GET'&&url.pathname.startsWith('/api/read/'))return json(res,readonlyQuery(url.pathname.slice('/api/read/'.length),Object.fromEntries(url.searchParams)));
       if (req.method === 'GET' && url.pathname === '/api/ui-language')
         return json(res,{systemDisplayLanguage,supported:['zh','en'],fallback:'en'});
+      if(req.method==='GET'&&url.pathname==='/api/tasks/status')return json(res,tasks.status());
+      if(req.method==='GET'&&url.pathname==='/api/workspace/templates')return json(res,templates.list());
+      if(req.method==='GET'&&url.pathname==='/api/workspace/sync')return json(res,workspaceSync.status());
+      if(req.method==='GET'&&url.pathname==='/api/workspace/data')return json(res,maintenance.inventory());
       if(req.method==='GET'&&url.pathname==='/api/analysis-provider')return json(res,{saved:describeProvider(readProviderConfig(store.meta)),active:provider.description,activation:'next-backend-start',connectionTested:false});
       if(req.method==='GET'&&url.pathname==='/api/layers/status'){if(!layers)return json(res,{error:'当前后台未加载独立处理器'},503);return json(res,layers.status(url.searchParams.get('sourceId')||undefined));}
       if(req.method==='GET'&&url.pathname==='/api/ai-connections')return json(res,connections.summary());
@@ -81,8 +101,10 @@ export function createApp({
       if(req.method==='GET'&&url.pathname==='/api/concepts/questions')return json(res,{items:Object.values(concepts.state.ignoredQuestions||{}).filter(q=>q.status==='ignored'),ignorable:true,createsTasks:false});
       if (req.method === "GET" && url.pathname === "/api/state") {
         const snapshot=store.snapshot({summary:url.searchParams.get('summary') === '1',refresh:false});
+        snapshot.nodes=attachBackupProjectLineage(snapshot.nodes,projectLedger());
         snapshot.projectGroups=projectGroups(snapshot.nodes,snapshot.jobs);const scopes=projectScopesFor(snapshot.nodes,snapshot.projectGroups);
-        snapshot.nodes=snapshot.nodes.map(n=>{const node={...n,projectScopes:scopes.get(n.id)||[]};return {...node,tagHierarchy:nodeTagHierarchy(node)};});
+        snapshot.nodes=snapshot.nodes.map(n=>{const node={...n,projectOrganization:true,projectScopes:scopes.get(n.id)||[]};return {...node,tagHierarchy:nodeTagHierarchy(node)};});
+        snapshot.taskControl=tasks.status();
         snapshot.independentLayers=layers?.activity()||null;
         if(layers)snapshot.conceptContentReview=reviewControl.status();
         return json(res,snapshot);
@@ -148,6 +170,21 @@ export function createApp({
         if(url.pathname==='/api/concepts/retry')return json(res,concepts.retryFailed(data));
         if(url.pathname==='/api/ai-connections/detect')return json(res,await connections.detect(data));
         if(url.pathname==='/api/ai-connections/configure')return json(res,connections.configure(data));
+        if(url.pathname==='/api/tasks/control')return json(res,tasks.control(data));
+        if(url.pathname==='/api/workspace/sync')return json(res,await workspaceSync.start());
+        if(url.pathname==='/api/workspace/sources')return json(res,workspaceSync.configure(data));
+        if(url.pathname==='/api/workspace/projects')return json(res,assignProjects(store,data));
+        if(url.pathname==='/api/workspace/templates')return json(res,templates.save(data));
+        if(url.pathname==='/api/workspace/reanalyze'){
+          if(!layers)throw Object.assign(Error('现有执行器不可用'),{status:503});
+          if(!Array.isArray(data.sourceIds)||!data.sourceIds.length||data.sourceIds.length>50)throw Object.assign(Error('请明确选择 1–50 份来源，不接受全库重跑'),{status:400});
+          if(!templates.input()[data.layer])throw Object.assign(Error('请先确认这一层的模板'),{status:400});
+          if(analyzer.state.tasksPaused)throw Object.assign(Error('任务已全局暂停，请使用开始／断点继续'),{status:409});
+          const sources=[...new Set(data.sourceIds)];for(const id of sources){const source=layers.source(id);if(data.layer==='skill'&&!layers.knowledge(source).length)throw Object.assign(Error('所选来源缺少已保存的知识依据，未提交任何重分析任务'),{status:409});if(analyzer.active.has(id)||analyzer.active.has('concept-only:'+id)||[...layers.active.keys()].some(k=>k.startsWith(id+':')))throw Object.assign(Error('所选资料正在处理，保存当前段后再发起'),{status:409});}
+          return json(res,{results:sources.map(sourceId=>layers.start({sourceId,layer:data.layer,reanalyze:true,templateHash:templates.input()[data.layer].hash})),scope:sources,fullLibraryStarted:false});
+        }
+        if(url.pathname==='/api/workspace/delete-preview')return json(res,maintenance.preview(data));
+        if(url.pathname==='/api/workspace/delete')return json(res,maintenance.execute(data));
         if(url.pathname==='/api/layers/start'){if(!layers)return json(res,{error:'当前后台未加载独立处理器'},503);return json(res,layers.start(data));}
         const routes = {
           '/api/handoff/checkpoint':()=>store.checkpoint(data),
@@ -186,6 +223,7 @@ export function createApp({
         "/animation-clock.js": "public/animation-clock.js",
         "/layer-controls.js": "public/layer-controls.js",
         "/taxonomy.js": "public/taxonomy.js",
+        "/workspace-controls.js": "public/workspace-controls.js",
         "/layout.js": "public/layout.js",
         "/style.css": "public/style.css",
         "/vendor/three.module.js": "node_modules/three/build/three.module.js",

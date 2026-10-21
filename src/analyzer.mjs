@@ -82,6 +82,7 @@ export class AutoAnalyzer {
         messages:e.issues.map(i=>i.text).slice(-10),error:e.status==='review'?e.lastError:null})).slice(0,50)};
   }
   configure({enabled,retryFailed=false,resumeSizeDeferred=false,retrySourceIds=[],rebuildSkillLinks=false}){
+    if(enabled===true&&this.state.tasksPaused)throw Object.assign(Error('任务已全局暂停，请使用开始／断点继续'),{status:409});
     if(typeof enabled==='boolean')this.state.enabled=enabled;
     if(!this.state.enabled)for(const file of this.active.values())file.controller.abort();
     if(rebuildSkillLinks)this.rebuildSkillLinks();
@@ -176,7 +177,7 @@ export class AutoAnalyzer {
       if(this.stopped||!this.state.enabled||controller.signal.aborted)throw Error('ANALYSIS_CANCELLED');
       if(this.store.find(source.id).hash!==source.hash)throw Error('SOURCE_CHANGED');
       if(fs.existsSync(artifact))fs.copyFileSync(artifact,artifact+'.previous-'+this.clock());
-      atomic(artifact,result);this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[],{historical:true});
+      atomic(artifact,result);this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[],{historical:true,template:result.analysisTemplates?.concept});
     }catch(error){if(error.message!=='ANALYSIS_CANCELLED'){this.conceptExtractor.failHistorical(key,error,this.clock());if(/rate.?limit|usage.?limit|quota|\b429\b/i.test(error.message))this.state.cooldownUntil=this.clock()+30*60*1000;}}
     finally{this.active.delete(activeKey);this.running=this.active.size>0;this.current=([...this.active.values()].map(({controller,...f})=>f))[0]||null;this.save();}
   }
@@ -214,6 +215,7 @@ export class AutoAnalyzer {
       else{
         result=await this.runner(payload,{signal:controller.signal});
       }
+      this.checkActive(entry);
       this.prepareLocators(result,part,candidates,tagCandidates);
       if(knowledgeDone&&result.knowledge?.length||skillDone&&result.skills?.length||conceptDone&&result.concepts?.length)throw Error('已完成层返回重复提取结果，未覆盖已有成果');
       this.validate(result,part.text,candidates);
@@ -225,7 +227,7 @@ export class AutoAnalyzer {
       if(result.mainTags?.length)this.applyMainTagUpdates([{id:source.id,mainTags:result.mainTags,reviewReason:''}],[{id:source.id,hash:source.hash}],true);
       this.applyMainTagUpdates(result.mainTagUpdates||[],tagCandidates);
       if(this.conceptExtractor&&Array.isArray(result.concepts)){
-        try{this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[]);}
+        try{this.conceptExtractor.consume(source,part,result.concepts,result.unresolvedQuestions||[],{template:result.analysisTemplates?.concept});}
         catch(error){this.conceptExtractor.defer(source,part,artifact,error);entry.issues.push({segment:part.start,text:'概念保存待补提：'+error.message});}
       }
       entry.offset=part.end;entry.parts.push({start:part.start,end:part.end,summary:result.summary,tags:result.tags,artifact:path.basename(artifact)});
@@ -433,7 +435,8 @@ export class AutoAnalyzer {
       const location=k.locatorFallback?(english?`## Source location for review\n\nCharacters ${part.start}–${part.end}; no rewritten sentence is presented as a verbatim quotation.`:`## 来源定位（供回查）\n\n字符 ${part.start}–${part.end}；未将模型改写当作逐字引文。`):(english?`## Original evidence\n\n${k.quote}`:`## 原文依据\n\n${k.quote}`);
       const body=english?`# ${k.title}\n\n## Extracted knowledge\n\n${k.body}\n\n## Limits\n\nType: ${epistemic}. This record organises the supplied material.\n\n${location}`:
         `# ${k.title}\n\n## 提取的知识\n\n${k.body}\n\n## 判断边界\n\n性质：${k.epistemic}。本条整理给定资料中的内容。\n\n${location}`;
-      upsert('knowledge',k,[{id:source.id,quote:k.quote,sourceHash:source.hash,locator:`字符 ${part.start}–${part.end}`}],body);
+      const confirmedTemplate=result.analysisTemplates?.knowledge;
+      upsert('knowledge',k,[{id:source.id,quote:k.quote,sourceHash:source.hash,locator:`字符 ${part.start}–${part.end}`}],confirmedTemplate?k.body:body,{...(confirmedTemplate?{analysisTemplate:{hash:confirmedTemplate.hash,version:confirmedTemplate.version}}:{}),epistemic:k.epistemic});
     }
     for(const s of result.skills){
       const sources=s.knowledgeKeys.map(key=>this.store.nodes.find(n=>n.id===references.get(key))).filter(n=>n?.kind==='knowledge').map(n=>({id:n.id,quote:n.body.slice(0,180),sourceHash:n.hash}));
@@ -441,7 +444,8 @@ export class AutoAnalyzer {
       const body=analysisLanguage(s.body)==='en'?`# ${s.title}\n\n## Capability\n\n${s.body}\n\n## Level and limits\n\n${s.level==='实践'?'The source contains self-reported practice, not independent verification.':'The material mentions this capability; it does not establish proficiency or verification.'}\n\n${s.practiceQuote||''}`:
         `# ${s.title}\n\n## 能做什么\n\n${s.body}\n\n## 程度与边界\n\n${s.level==='实践'?'原文含用户自述实践，不等于独立验证。':'材料只支持涉及该能力，不代表已掌握或已验证。'}\n\n${s.practiceQuote||''}`;
       const methodPolicy=skillMethodPolicy({scope:s.methodScope||'',limitations:s.methodLimitations||'',declaredOrigin:s.methodOrigin||'unknown',recognitionKind:s.methodRecognition?.kind||'unconfirmed',recognitionQuote:s.methodRecognition?.quote||'',recognitionTarget:s.methodRecognition?.target||'',sourceId:source.id,sourceHash:source.hash,readRange:{start:part.start,end:part.end}},source,body);
-      upsert('skill',s,sources,body,{level:s.level,domain:s.category,methodPolicy});
+      const confirmedTemplate=result.analysisTemplates?.skill;
+      upsert('skill',s,sources,confirmedTemplate?s.body:body,{level:s.level,domain:s.category,methodPolicy,...(confirmedTemplate?{analysisTemplate:{hash:confirmedTemplate.hash,version:confirmedTemplate.version}}:{})});
     }
     const relation=(e,from,to,sources)=>{
       if(!from||!to||from===to)throw new Error('无效关系端点');
