@@ -33,3 +33,11 @@ The build and 60 targeted queue/provider/pause/locale/visibility checks passed i
 Only reviewed implementation modules, synthetic tests and English documentation are selected. The public user-supplied Tunnel setup is retained; account-specific private Tunnel defaults are excluded. No runtime data or local evidence images are copied. Build and 33 targeted checks pass. Browser checks used isolated synthetic data; full regression results are recorded below. See UPDATE-NOTES-0.7.0.md for capabilities and limits.
 
 Full public suite: ℹ tests 351, ℹ pass 339, ℹ fail 12. The same 12 failing names match the pre-existing layout, navigation/render and relation-history failures; they are not claimed fixed.
+
+## 0.7.1 publication review — 2026-10-22
+
+Only six reviewed frontend source modules (including the rebuilt graph bundle), one synthetic regression test, package versions, the public file manifest and release documentation are selected. The public user-supplied Tunnel configuration is preserved. Private reclassification scripts, inputs, ASTRA outputs, runtime metadata, credentials and local screenshots are excluded.
+
+The public build and all 29 targeted navigation, source-deduplication, project, locale, template, sync and deletion checks passed. Isolated synthetic browser validation in the local implementation confirmed all four networks, backdrop dismissal, right-click return and unsaved inline draft retention. No private service was restarted for publication. This is a bounded allowlist and pattern review, not a complete security audit.
+
+Full-suite comparison against an isolated archive of public 0.7.0: baseline 351 tests / 339 pass / 12 fail; 0.7.1 356 tests / 344 pass / 12 fail. Failing test names match exactly, with no new failures. The twelve existing failures are retained as documented limitations, not claimed resolved.

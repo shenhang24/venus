@@ -1,5 +1,14 @@
 # Changes
 
+## 0.7.1 — 2026-10-22
+
+- Nominate recurring exact tags at three independent Markdown sources and promote at five across all four networks.
+- Deduplicate source lineage and preserve literal evidence, manual unassignment and cross-project relationships.
+- Add backdrop dismissal and right-click dialog close / previous-view navigation, retaining editable context menus and inline drafts.
+- Reserve right-click for application navigation instead of simultaneous camera panning.
+
+[今天更新详情 / Detailed changes today](UPDATE-NOTES-0.7.1.md).
+
 ## 0.7.0 — 2026-10-21
 
 - Organize all four networks by evidenced project membership, retaining domains and unassigned content.

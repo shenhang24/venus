@@ -1,6 +1,6 @@
 # Venus — Your Personal Galaxy
 
-**Latest: 0.7.0 (2026-10-21)** — project-based full nebulae in all four networks, editable confirmed analysis templates, incremental sync and pause/resume, scoped permanent deletion beside Save, and real AI connection highlights. [Full update notes](UPDATE-NOTES-0.7.0.md). Historical 0.6.0 screenshots below predate this UI.
+**Latest: 0.7.1 (2026-10-22)** — recurring tags form project groups at 3/5 independent Markdown sources across all four networks; backdrop dismissal and right-click back navigation. [今天更新详情 / Changes today](UPDATE-NOTES-0.7.1.md). Historical screenshots below predate this UI.
 
 
 You may be surprised by how much knowledge, creativity, and practical experience you've accumulated, once you can finally see how it all connects.
@@ -66,7 +66,7 @@ Continuous hierarchical orbits, bounded trails and exterior transfer channels sh
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.7.0**. See [changes](CHANGELOG.md).
+Current release: **0.7.1**. See [changes](CHANGELOG.md).
 
 ## Install and start
 

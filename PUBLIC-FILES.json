@@ -1,6 +1,6 @@
 {
-  "version": "0.7.0",
-  "publicBaseCommit": "23e2a78495b5b84be98e7bafeab9433bbfa52bec",
+  "version": "0.7.1",
+  "publicBaseCommit": "41050d72a216b0a53955e417e1a1196d8a583ceb",
   "privateContentScan": "Bounded allowlist and sensitive-pattern scan; not a complete security audit.",
   "excluded": [
     "data",
@@ -46,8 +46,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 5502,
-      "sha256": "d2447bf1e5633e228ad2a2fa6e834587fff36e30b4d4f2e16e8c56599daaf1ab"
+      "bytes": 6120,
+      "sha256": "226368c1feec059d7371da0e1364e308becba277104da51e745c0089002271e4"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -76,13 +76,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 23159,
-      "sha256": "f977eb08d636dd4b9c519c61780d1cc69ffcc1f6590964828f37b8ed82c96c38"
+      "bytes": 23322,
+      "sha256": "4cfe20c829bfc2f6c23ad7d04a8c46ce6a857530c2305fe4540b55f7e05ea487"
     },
     {
       "path": "RELEASE-NOTES.md",
-      "bytes": 3863,
-      "sha256": "bd69ef8cf73dd4cf4da4745817209953665f0f01bc437d85613840709df67036"
+      "bytes": 7095,
+      "sha256": "a3c7faac18b0d5a51c11f15b17267b02ffbee2bcfbee09da4af4bc7fb3f1f466"
     },
     {
       "path": "Restart-Venus.cmd",
@@ -133,6 +133,11 @@
       "path": "UPDATE-NOTES-0.7.0.md",
       "bytes": 3863,
       "sha256": "bd69ef8cf73dd4cf4da4745817209953665f0f01bc437d85613840709df67036"
+    },
+    {
+      "path": "UPDATE-NOTES-0.7.1.md",
+      "bytes": 3194,
+      "sha256": "160447362dbc1db4bcfa9cc4d0561546cf705eee4057448e388fc89ed33de190"
     },
     {
       "path": "UPDATE-NOTES-2026-10-19.md",
@@ -246,8 +251,8 @@
     },
     {
       "path": "docs/RELEASE-REVIEW.md",
-      "bytes": 5005,
-      "sha256": "8eaa2367a488670feb8a6e6c82e7e1771d9d91f681e733e62e4613a0a5767974"
+      "bytes": 6195,
+      "sha256": "bf37f463d3034017efa9b6b4d67b079462118b87233d86e4fafe1be9349f3849"
     },
     {
       "path": "docs/SCREENSHOTS-0.6.0.md",
@@ -416,13 +421,13 @@
     },
     {
       "path": "package-lock.json",
-      "bytes": 1557,
-      "sha256": "80604a8669cd5abf3f77650417cd611ed0cc42b2783655050b2c6d739caf756d"
+      "bytes": 1612,
+      "sha256": "fb5771523f573b064b169824f2bd9e4ef6b1151b4197f1becaa134872bda3927"
     },
     {
       "path": "package.json",
-      "bytes": 376,
-      "sha256": "a36b126bacf6926c32530c9bab0faf65edb047ea9840bceb37defc2885bbf805"
+      "bytes": 395,
+      "sha256": "5dc9a084a78900c003834cf425f72cf3b1fcb41ad5fa9cb4ab93aa00f6a615f2"
     },
     {
       "path": "public/animation-clock.js",
@@ -431,8 +436,8 @@
     },
     {
       "path": "public/app.js",
-      "bytes": 113018,
-      "sha256": "35ff9210564c77bcc0708fa86a3f3688bddb825e4f6271d1d1ebfa8939211659"
+      "bytes": 116027,
+      "sha256": "fce5634fd0db83cc17d36dc73fc3e9c6e223eb77615d42ebc853d3f34665a31a"
     },
     {
       "path": "public/body-avoidance.js",
@@ -446,13 +451,13 @@
     },
     {
       "path": "public/graph.js",
-      "bytes": 164813,
-      "sha256": "8a09687692b9c4006b9a1270a590c7b0e5657fed48bab392ee825069bceb8e93"
+      "bytes": 167256,
+      "sha256": "327ee0cedc40dff8ac4e3859c11900dc0eeaff247663c58f77d93b1d0217069c"
     },
     {
       "path": "public/i18n.js",
-      "bytes": 65020,
-      "sha256": "d52494174923e57b78fa446bf44a143bb4ae2b62ef7b063d56d3c1dd2ae17e3f"
+      "bytes": 65502,
+      "sha256": "83c850fbdff1109c0191813191ed17aba4a64b81eb397086d7c70fd1141a9b5c"
     },
     {
       "path": "public/index.html",
@@ -486,8 +491,8 @@
     },
     {
       "path": "public/network-controls.js",
-      "bytes": 3301,
-      "sha256": "a9bd454334b8063a5e57116e711e927d2c0b6ec8e8939ee05a35ec53c036c86e"
+      "bytes": 3449,
+      "sha256": "8c5b9ccaf438d099d436ab5fbe11afba84f2a409c6b4396dad609c7f1623c105"
     },
     {
       "path": "public/network-labels.js",
@@ -511,8 +516,8 @@
     },
     {
       "path": "public/taxonomy.js",
-      "bytes": 7234,
-      "sha256": "98a0831bc8c93f7e375c3716b8981618891778295593b116dbd2c0d704a0dcf9"
+      "bytes": 9529,
+      "sha256": "a35cbec285059359f0d187399f957c4d8c85fe6fc773b68986425dc11f6feccd"
     },
     {
       "path": "public/vault-heat.js",
@@ -521,8 +526,8 @@
     },
     {
       "path": "public/workspace-controls.js",
-      "bytes": 14611,
-      "sha256": "a88c50d202968d45dbfe4e0688ae13eac82725e38da6cbdbef4af2be2de91ae6"
+      "bytes": 16695,
+      "sha256": "9ab1fdca2700532d0242d418c0b05ec1182883354c873a978caf08293eb1de3b"
     },
     {
       "path": "scripts/backup-history.py",
@@ -803,6 +808,11 @@
       "path": "tests/dense-satellite-spacing.test.mjs",
       "bytes": 1036,
       "sha256": "4071e182f48a7c9dbcbd812547de02be5eb1fa69f5b20208c70689e205d9e7f4"
+    },
+    {
+      "path": "tests/dismiss-recurring-projects.test.mjs",
+      "bytes": 2810,
+      "sha256": "11a81db45f54f9889d3f138d1da93ea011cf602821ee46b2be3c610c002784ef"
     },
     {
       "path": "tests/expansion-replay.test.mjs",

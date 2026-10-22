@@ -22,6 +22,7 @@ export function configureNetworkControls(controls, canvas) {
   controls.screenSpacePanning=true;
   controls.mouseButtons.LEFT=MOUSE.ROTATE;
   controls.mouseButtons.MIDDLE=MOUSE.PAN;
+  controls.mouseButtons.RIGHT=null; // Right click belongs to application back navigation.
   const preventMiddleDefault=event=>{if(event.button===1)event.preventDefault();};
   canvas.addEventListener('mousedown',preventMiddleDefault);
   canvas.addEventListener('auxclick',preventMiddleDefault);

@@ -1289,6 +1289,7 @@ export function configureNetworkControls(controls, canvas) {
   controls.screenSpacePanning=true;
   controls.mouseButtons.LEFT=MOUSE.ROTATE;
   controls.mouseButtons.MIDDLE=MOUSE.PAN;
+  controls.mouseButtons.RIGHT=null; // Right click belongs to application back navigation.
   const preventMiddleDefault=event=>{if(event.button===1)event.preventDefault();};
   canvas.addEventListener('mousedown',preventMiddleDefault);
   canvas.addEventListener('auxclick',preventMiddleDefault);
@@ -1340,6 +1341,7 @@ export const UNASSIGNED_PROJECT='@unassigned-project';
 export const projectKey=id=>'@project:'+encodeURIComponent(id);
 export function explicitProjects(node){
  const out=new Map(),add=(p,basis)=>{if(typeof p==='string')p={name:p};if(!p||typeof p!=='object')return;const name=String(p.name||p.label||p.projectName||'').trim(),rawId=p.id||p.projectId;if(!name&&!rawId)return;const id=String(rawId||'named:'+normal(name));out.set(id,{id,name:name||id,basis:p.basis||basis,sourceIds:[node.id]});};
+ for(const p of node.autoProjectMemberships||[])add(p,'repeated-tag-project');
  const members=node.classification?.projectMemberships;if(Array.isArray(members)){for(const p of members)add(p,'saved-project-metadata');return [...out.values()];}
  for(const p of Array.isArray(node.projects)?node.projects:typeof node.projects==='string'?[node.projects]:[])add(p,'explicit-project');
  if(node.projectId)add({id:node.projectId,name:node.projectName||node.project?.name},'explicit-project');
@@ -1364,7 +1366,31 @@ export function nodeTagHierarchy(node){
  const topics=[...new Set([...themes.flatMap(t=>t.secondary.length?t.secondary.map(s=>t.primary+' / '+s):[t.primary]),...(node.categories||[])])].filter(name=>name!=='项目'&&!/^(?:项目|Project)\s*[:：/·]/i.test(name)).sort();
  const scopes=node.projectScopes||[];return scopes.length?scopes.map(p=>({primary:p.name,key:projectKey(p.id),projectId:p.id,kind:'project',secondary:topics,basis:p.basis,sourceIds:p.sourceIds||[]})):[{primary:'待归属',key:UNASSIGNED_PROJECT,kind:'unassigned',secondary:topics}];
 }
-export function organizeProjectKnowledge(state){const groups=projectGroups(state.nodes,state.jobs||[]),scopes=projectScopesFor(state.nodes,groups);return {...state,projectGroups:groups,nodes:state.nodes.map(n=>({...n,projectScopes:scopes.get(n.id)||[],projectOrganization:true,...(n.kind==='knowledge'?{knowledgeProjectOrganization:true}:{})}))};}
+// User rule: three independent source documents nominate a project; five promote it.
+export function recurringTagProjects(nodes){
+ const byId=new Map(nodes.map(n=>[n.id,n])),memo=new Map(),groups=new Map();
+ const roots=(id,seen=new Set())=>{if(memo.has(id))return memo.get(id);if(seen.has(id))return new Set();seen.add(id);const n=byId.get(id);if(!n)return new Set();
+  const lineage=[...(n.projectSourceIds||[]),...(n.importProvenance||[]).map(p=>p.previousVersionNodeId).filter(Boolean)];
+  const parents=n.kind==='vault'?lineage:[...lineage,...(n.sources||[]).map(p=>p.id)];
+  const result=new Set();for(const p of parents)for(const root of roots(p,new Set(seen)))result.add(root);
+  if(!result.size&&!parents.length)result.add(n.id);memo.set(id,result);return result;
+ };
+ for(const n of nodes){if(n.mergedInto||n.classificationNeedsReview||!n.classification||n.classification.sourceHash&&n.hash&&n.classification.sourceHash!==n.hash)continue;
+  for(const tag of n.classification.tags||[]){const key=normal(tag.name);if(!key||!tag.quote?.trim()||!tag.reason?.trim())continue;
+   if(typeof n.body==='string'&&!n.body.includes(tag.quote))continue;
+   if(!groups.has(key))groups.set(key,{id:'recurring-tag:'+key,name:tag.name.trim(),basis:'repeated-tag-project',sourceIds:new Set(),nodeIds:new Set()});
+   const g=groups.get(key);g.nodeIds.add(n.id);for(const id of roots(n.id))g.sourceIds.add(id);
+  }
+ }
+ return [...groups.values()].filter(g=>g.sourceIds.size>=3).map(g=>({...g,sourceCount:g.sourceIds.size,sourceIds:[...g.sourceIds],nodeIds:[...g.nodeIds],status:g.sourceIds.size>=5?'promoted':'candidate'}));
+}
+export function organizeProjectKnowledge(state){
+ const recurring=recurringTagProjects(state.nodes),membership=new Map();
+ for(const g of recurring.filter(g=>g.status==='promoted'))for(const id of new Set([...g.nodeIds,...g.sourceIds])){if(!membership.has(id))membership.set(id,[]);membership.get(id).push({id:g.id,name:g.name,basis:g.basis,sourceCount:g.sourceCount});}
+ const nodes=state.nodes.map(n=>({...n,autoProjectMemberships:Array.isArray(n.classification?.projectMemberships)&&!n.classification.projectMemberships.length?[]:membership.get(n.id)||[]}));
+ const groups=projectGroups(nodes,state.jobs||[]),scopes=projectScopesFor(nodes,groups);
+ return {...state,recurringProjects:recurring,projectGroups:groups,nodes:nodes.map(n=>({...n,projectScopes:scopes.get(n.id)||[],projectOrganization:true,...(n.kind==='knowledge'?{knowledgeProjectOrganization:true}:{})}))};
+}
 export function knowledgeProjectBuckets(nodes){const buckets=new Map();for(const n of nodes.filter(n=>n.kind==='knowledge'&&!n.mergedInto))for(const h of nodeTagHierarchy({...n,knowledgeProjectOrganization:true})){const key=h.key||h.primary;if(!buckets.has(key))buckets.set(key,{key,name:h.primary,projectId:h.projectId||null,kind:h.kind,nodes:[],topics:new Set()});const b=buckets.get(key);b.nodes.push(n);for(const t of h.secondary)b.topics.add(t);}return [...buckets.values()].map(b=>({...b,count:b.nodes.length,topics:[...b.topics].sort()})).sort((a,b)=>a.kind==='unassigned'?1:b.kind==='unassigned'?-1:a.name.localeCompare(b.name));}
 export function knowledgeTopicNames(node){return [...new Set([...themeHierarchy(node).flatMap(t=>[t.primary,...t.secondary]),...(node.categories||[])])].filter(Boolean);}
 

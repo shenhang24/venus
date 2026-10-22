@@ -1,5 +1,5 @@
 let language = 'zh';
-const workspaceTranslations={'已连接':'Connected','尚未检测':'Not checked','删除':'Delete','更新同步／断点继续':'Update sync / resume','待归属':'Awaiting project assignment'};
+const workspaceTranslations={'自动项目：':'Automatic projects: ','候选：':'Candidates: ','同标签：3 份独立来源列为候选，5 份自动成为项目。':'Same tag: 3 independent sources nominate a project; 5 promote it.','已连接':'Connected','尚未检测':'Not checked','删除':'Delete','更新同步／断点继续':'Update sync / resume','待归属':'Awaiting project assignment'};
 export function resolveLanguage(systemLanguage, browserLanguages = []) {
   const requested = systemLanguage || browserLanguages.find(Boolean) || 'en';
   return /^zh(?:-|$)/i.test(requested) ? 'zh' : 'en';

@@ -1,3 +1,4 @@
+import {createNavigationHistory,installDismissNavigation} from '/workspace-controls.js';
 import {organizeProjectKnowledge,knowledgeProjectBuckets,knowledgeTopicNames,projectKey,UNASSIGNED_PROJECT} from '/taxonomy.js';
 import {initWorkspaceControls} from '/workspace-controls.js';
 import { tr, initializeLanguage, uiLocale, uiError, heatText } from '/i18n.js';
@@ -270,7 +271,12 @@ function safeMarkdown(body) {
   renderer.image = () => tr('<span class="dim">[外部图片未自动加载]</span>');
   return marked.parse(body, { renderer, breaks: false });
 }
+const viewHistory=createNavigationHistory();
+function rememberView(){viewHistory.push({view,chosen,vaultId,knowledgeSource,knowledgeQuery,knowledgePage,knowledgeTopic,mainTags:{...mainTagSelections}});}
+function backView(){const previous=viewHistory.pop();if(!previous){if(graph?.selected){graph.fit();return true;}return false;}view=previous.view;chosen=previous.chosen;vaultId=previous.vaultId;knowledgeSource=previous.knowledgeSource;knowledgeQuery=previous.knowledgeQuery;knowledgePage=previous.knowledgePage;knowledgeTopic=previous.knowledgeTopic;for(const k of Object.keys(mainTagSelections))delete mainTagSelections[k];Object.assign(mainTagSelections,previous.mainTags);selectedEdge=null;benchmark=false;if(graph){graph.dispose();graph=null;}render({force:true});return true;}
+installDismissNavigation(document,{back:backView});
 function navigate(v, id) {
+  if(v!==view||(id&&id!==chosen))rememberView();
   if (v === 'knowledge' && !id) {
     knowledgeSource=null;knowledgeQuery='';knowledgePage=0;
   }
@@ -411,7 +417,7 @@ async function render({force=false}={}) {
       const row=x=>'<button class="file-row '+(x.id===chosen?'selected':'')+'" data-file="'+esc(x.id)+'" title="'+esc(x.title)+'"><span class="file-icon">◇</span>'+esc(x.title)+'<small>'+esc(tr(x.decision||'已提取'))+'</small></button>';
       $('#file-list').innerHTML='<p class="subtle">'+tr('匹配：')+page.total+' · '+(page.page+1)+' / '+page.pages+'</p>'+knowledgeProjectBuckets(page.items).map((b,i)=>'<details class="project-entry"'+(b.nodes.some(n=>n.id===chosen)||i===0?' open':'')+'><summary>'+esc(b.kind==='unassigned'?tr(b.name):b.name)+' <small>'+b.count+'</small></summary><div class="project-branches">'+b.nodes.map(row).join('')+'</div></details>').join('')+'<div><button type="button" id="knowledge-prev"'+(page.page===0?' disabled':'')+'>'+tr('上一页')+'</button> <button type="button" id="knowledge-next"'+(page.page+1>=page.pages?' disabled':'')+'>'+tr('下一页')+'</button></div>';
       $('#knowledge-prev').onclick=()=>{knowledgePage--;draw();};$('#knowledge-next').onclick=()=>{knowledgePage++;draw();};
-      $$('[data-file]').forEach(b=>b.onclick=()=>{chosen=b.dataset.file;document.body.classList.remove('files-open');render();});
+      $$('[data-file]').forEach(b=>b.onclick=()=>{if(chosen!==b.dataset.file)rememberView();chosen=b.dataset.file;document.body.classList.remove('files-open');render();});
     };
     $('#list-search').oninput=e=>{knowledgeQuery=e.target.value;knowledgePage=0;draw();};draw();bindKnowledgeOrganization();
   }else $("#list-search").oninput = (e) =>
@@ -424,6 +430,7 @@ async function render({force=false}={}) {
   $$("[data-file]").forEach(
     (b) =>
       (b.onclick = () => {
+        if(chosen!==b.dataset.file)rememberView();
         chosen = b.dataset.file;
         if (view === "vault") vaultId = chosen;
         document.body.classList.remove('files-open');
@@ -591,6 +598,7 @@ function renderInspector() {
       tr("<h3>分类与关系</h3>") +
       taxonomyFiltersHTML(kind)+
       '<p class="metric">'+tr('默认显示完整项目星云及全部所属节点；点击节点聚焦，查看全图显示整个星云。项目筛选仍生效，文字随距离缩小、隐藏。')+'</p>'+
+      '<p class="metric">'+tr('同标签：3 份独立来源列为候选，5 份自动成为项目。')+' '+tr('自动项目：')+(state.recurringProjects||[]).filter(p=>p.status==='promoted').length+' · '+tr('候选：')+(state.recurringProjects||[]).filter(p=>p.status==='candidate').length+'</p>'+
       categoryFilterHTML(kind) +
       tr('<h4>关系类型 · 多选筛选</h4><button class="text-button" id="select-all">全部显示</button>') +
       relationDisplayTypes(state.types)

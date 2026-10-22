@@ -27,3 +27,19 @@ export function initWorkspaceControls({getState,refresh,onError=console.error}){
  document.querySelector('#workspace-open').onclick=action(async()=>{dialog.showModal();await templates();});
  return {deleteNode:(id,{dirty=false}={})=>action(async()=>{if(!dialog.open)dialog.showModal();await data(id);if(dirty)feedback.textContent='当前有未保存的编辑；取消删除后草稿仍保留。确认删除会舍弃此资料及未保存内容。';})(),start:action(async()=>{const result=await request('sync',{});await refresh();if(!dialog.open)dialog.showModal();await sync();feedback.textContent=result.accepted?'连接检查通过，正在获取增量并保存；尚未完成消化。':'已有同步正在运行，未重复启动。';})};
 }
+
+export function outsideDialog(dialog,event){const r=dialog.getBoundingClientRect();return event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom;}
+export function nativeContextTarget(target){return !!target?.closest?.('input,textarea,select,[contenteditable="true"],a[href]');}
+export function createNavigationHistory(limit=100){const entries=[];return {push(value){const copy=structuredClone(value);if(JSON.stringify(entries.at(-1))!==JSON.stringify(copy))entries.push(copy);if(entries.length>limit)entries.shift();},pop(){return entries.pop()||null;},get size(){return entries.length;}};}
+// Only an outside press followed by an outside release dismisses a dialog.
+export function installDismissNavigation(doc,{back=()=>false}={}){
+ let pressedOutside=null;const opened=[];
+ const sync=()=>{for(let i=opened.length-1;i>=0;i--)if(!opened[i].open)opened.splice(i,1);for(const d of doc.querySelectorAll('dialog[open]'))if(!opened.includes(d))opened.push(d);return opened.at(-1);};
+ const dismiss=d=>{const close=d.querySelector('#modal-close,[data-close]');if(close)close.click();else d.close();};
+ const down=e=>{const d=sync();pressedOutside=e.button===0&&d&&e.target===d&&outsideDialog(d,e)?d:null;};
+ const click=e=>{const d=sync();if(d&&d===pressedOutside&&e.target===d&&outsideDialog(d,e)){e.preventDefault();e.stopPropagation();dismiss(d);}pressedOutside=null;};
+ const context=e=>{if(nativeContextTarget(e.target)||doc.getSelection()?.toString())return;const d=sync();e.preventDefault();e.stopImmediatePropagation();if(d)dismiss(d);else back();};
+ const observer=new MutationObserver(sync);observer.observe(doc.body,{subtree:true,attributes:true,attributeFilter:['open']});
+ doc.addEventListener('pointerdown',down,true);doc.addEventListener('click',click,true);doc.addEventListener('contextmenu',context,true);
+ return ()=>{observer.disconnect();doc.removeEventListener('pointerdown',down,true);doc.removeEventListener('click',click,true);doc.removeEventListener('contextmenu',context,true);};
+}
