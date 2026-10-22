@@ -1,6 +1,6 @@
 {
-  "version": "0.7.1",
-  "publicBaseCommit": "41050d72a216b0a53955e417e1a1196d8a583ceb",
+  "version": "0.7.2",
+  "publicBaseCommit": "0ac78f406c10b45b2effcfd933ae021794d4c6a3",
   "privateContentScan": "Bounded allowlist and sensitive-pattern scan; not a complete security audit.",
   "excluded": [
     "data",
@@ -46,8 +46,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 6120,
-      "sha256": "226368c1feec059d7371da0e1364e308becba277104da51e745c0089002271e4"
+      "bytes": 6565,
+      "sha256": "8ab53372fa0b2980222a3c956fffcb7d36077e38419eca7841c0b62622557849"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -76,13 +76,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 23322,
-      "sha256": "4cfe20c829bfc2f6c23ad7d04a8c46ce6a857530c2305fe4540b55f7e05ea487"
+      "bytes": 23402,
+      "sha256": "6fbd18ab791ec1e7e9a031134b8869a189e5ce8b9e277c9a08c47959f34b048a"
     },
     {
       "path": "RELEASE-NOTES.md",
-      "bytes": 7095,
-      "sha256": "a3c7faac18b0d5a51c11f15b17267b02ffbee2bcfbee09da4af4bc7fb3f1f466"
+      "bytes": 9187,
+      "sha256": "009b11e5cacbbe08bd16fb64b2c01a607303df08cfc69f423866f7d095d86b9d"
     },
     {
       "path": "Restart-Venus.cmd",
@@ -138,6 +138,11 @@
       "path": "UPDATE-NOTES-0.7.1.md",
       "bytes": 3194,
       "sha256": "160447362dbc1db4bcfa9cc4d0561546cf705eee4057448e388fc89ed33de190"
+    },
+    {
+      "path": "UPDATE-NOTES-0.7.2.md",
+      "bytes": 2083,
+      "sha256": "cf564ecd30ab88bd8c1a479ec1393f2ac63347c80847c3397b82992015aec561"
     },
     {
       "path": "UPDATE-NOTES-2026-10-19.md",
@@ -251,8 +256,8 @@
     },
     {
       "path": "docs/RELEASE-REVIEW.md",
-      "bytes": 6195,
-      "sha256": "bf37f463d3034017efa9b6b4d67b079462118b87233d86e4fafe1be9349f3849"
+      "bytes": 6835,
+      "sha256": "43665d0e9926cedd99330cedde8a5f19315bf1b64343a6a20b8b0bfbf70abf99"
     },
     {
       "path": "docs/SCREENSHOTS-0.6.0.md",
@@ -422,12 +427,12 @@
     {
       "path": "package-lock.json",
       "bytes": 1612,
-      "sha256": "fb5771523f573b064b169824f2bd9e4ef6b1151b4197f1becaa134872bda3927"
+      "sha256": "97104a60413a1c98a7924d5fa6dd90213bb3bc48b7a69ae5be2ddfbaedbbb069"
     },
     {
       "path": "package.json",
       "bytes": 395,
-      "sha256": "5dc9a084a78900c003834cf425f72cf3b1fcb41ad5fa9cb4ab93aa00f6a615f2"
+      "sha256": "20263a6b30ef2e3cba56ce9f6f93082fb9069731621961c7255c3fbe85e0245c"
     },
     {
       "path": "public/animation-clock.js",
@@ -451,8 +456,8 @@
     },
     {
       "path": "public/graph.js",
-      "bytes": 167256,
-      "sha256": "327ee0cedc40dff8ac4e3859c11900dc0eeaff247663c58f77d93b1d0217069c"
+      "bytes": 166775,
+      "sha256": "3a690bfd7f73f1755e10f1bc7a1706789534a195b760d5fc229da19db5b09055"
     },
     {
       "path": "public/i18n.js",
@@ -476,8 +481,8 @@
     },
     {
       "path": "public/layout.js",
-      "bytes": 65584,
-      "sha256": "3772946db645437d6d1c93ecedf9a87da5ccc60fb86ab95914c2f34c96bb53cc"
+      "bytes": 65103,
+      "sha256": "ff6c502efd5f3adb6148da45803180ea86c9219f55a4b8adec0028d8772bbc3f"
     },
     {
       "path": "public/main-tags.js",
@@ -946,8 +951,8 @@
     },
     {
       "path": "tests/planet-yield.test.mjs",
-      "bytes": 2009,
-      "sha256": "3371640974f62924ac2e8133a6d9aa8365215c21192995c37b0a7492960cb7e3"
+      "bytes": 3533,
+      "sha256": "37c2ac88f823de23ea5bc7305159a07b96bee5b7f61db4be47e2f258f3649206"
     },
     {
       "path": "tests/processing-summary.test.mjs",

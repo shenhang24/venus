@@ -1,5 +1,13 @@
 # Changes
 
+## 0.7.2 — 2026-10-22
+
+- Use equal angular speeds within each host/ring and asynchronous periods between different rings in all four networks.
+- Apply the rule to nested satellite rings while preserving accumulated angles, stable identities and orbit clearances.
+- Replace per-planet speed jitter and catch-up yielding with deterministic ring-level speeds.
+
+[今天追加更新 / Detailed orbit-speed changes](UPDATE-NOTES-0.7.2.md).
+
 ## 0.7.1 — 2026-10-22
 
 - Nominate recurring exact tags at three independent Markdown sources and promote at five across all four networks.

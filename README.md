@@ -1,6 +1,6 @@
 # Venus — Your Personal Galaxy
 
-**Latest: 0.7.1 (2026-10-22)** — recurring tags form project groups at 3/5 independent Markdown sources across all four networks; backdrop dismissal and right-click back navigation. [今天更新详情 / Changes today](UPDATE-NOTES-0.7.1.md). Historical screenshots below predate this UI.
+**Latest: 0.7.2 (2026-10-22)** — equal revolution speeds within each ring and asynchronous speeds between rings; recurring tags form project groups at 3/5 independent Markdown sources across all four networks; backdrop dismissal and right-click back navigation. [今天更新详情 / Changes today](UPDATE-NOTES-0.7.2.md). Historical screenshots below predate this UI.
 
 
 You may be surprised by how much knowledge, creativity, and practical experience you've accumulated, once you can finally see how it all connects.
@@ -66,7 +66,7 @@ Continuous hierarchical orbits, bounded trails and exterior transfer channels sh
 
 Installation, first-run configuration and credential requirements are detailed in [Deployment](docs/DEPLOYMENT.md).
 
-Current release: **0.7.1**. See [changes](CHANGELOG.md).
+Current release: **0.7.2**. See [changes](CHANGELOG.md).
 
 ## Install and start
 

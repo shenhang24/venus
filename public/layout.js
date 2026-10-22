@@ -680,12 +680,12 @@ export class AffinityLayout {
           baseRadius=Math.max(m.radius,this.orbitalClearance(i,host));
         }
         const initialPhase=orbit.phase??Math.atan2(p[2]-q[2],p[0]-q[0]);
-        // Each planet owns a continuous clock; close followers yield without stopping.
+        // Per-body clocks remain continuous; bodies on one ring share angular speed.
         // Visual orbit periods stay observable even after clearance enlarges a ring.
-        const omegaBase=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):(orbit.baseOmega??=(orbit.knowledgePlane?.008*(.85+.3*phaseOf(orbit.host)/(Math.PI*2)):.008/(1+(orbit.localShell||0)*.08))),omega=omegaBase*stepScale;
+        const omegaBase=orbit.kind==='planet'?(this.planetStepSpeeds?.get(n.id)||this.preferredPlanetSpeed(n.id,orbit)):this.preferredSatelliteSpeed(orbit),omega=omegaBase*stepScale;
         // Persistent clocks survive sync(): background imports must not reset
         // any descendant's revolution. Co-orbiting bodies share a phase clock.
-        const clockKey=orbit.clockKey??=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'||orbit.knowledgePlane?0:orbit.localShell]);
+        const clockKey=orbit.clockKey??=JSON.stringify([orbit.host,orbit.kind==='planet'?'planet:'+n.id:orbit.knowledgePlane?'knowledge':'satellite',orbit.kind==='planet'?0:orbit.localShell]);
         let clock=this.activeIds?this.orbitClock(n.id,orbit,clockKey):orbit.clockReference||this.orbitClocks.get(clockKey);
         if(!clock){clock={angle:0,lastStep:-1};this.orbitClocks.set(clockKey,clock);}
         orbit.clockReference=clock;
@@ -714,31 +714,17 @@ export class AffinityLayout {
     }
   }
 
-  preferredPlanetSpeed(id,orbit){return .003/(1+(orbit.ring||0)*.14)*(.85+.3*phaseOf('planet-period:'+id)/(Math.PI*2));}
+  preferredPlanetSpeed(id,orbit){return .003/(1+(orbit.ring||0)*.14)*(.85+.3*phaseOf('planet-period:'+orbit.host)/(Math.PI*2));}
+  preferredSatelliteSpeed(orbit){return .008/(1+(orbit.localShell||0)*.08)*(.85+.3*phaseOf('satellite-period:'+orbit.host)/(Math.PI*2));}
   preparePlanetSpeeds(){
-    const groups=new Map(),speeds=new Map();
+    const speeds=new Map();
     if(this.planetSpeedSource!==this.orbits){this.planetSpeedSource=this.orbits;this.planetSpeedNodes=this.nodes.filter(n=>this.orbits[n.id]?.kind==='planet');}
     const activePlanets=this.activeIds?this.planetSpeedNodes.filter(n=>this.activeIds.has(n.id)):this.planetSpeedNodes;
-    for(const n of activePlanets){const orbit=this.orbits[n.id];
-      const key=JSON.stringify([orbit.host,'planet:'+n.id,0]);let clock=this.orbitClock(n.id,orbit,key);const preferred=this.preferredPlanetSpeed(n.id,orbit);
-      if(!clock){clock={angle:0,lastStep:-1,omega:preferred};this.orbitClocks.set(key,clock);}
-      const speed=(clock.omega??preferred)+(preferred-(clock.omega??preferred))*.04;speeds.set(n.id,speed);orbit.preferredAngularVelocity=preferred;
-      if(orbit.motion)continue;
-      const ringKey=orbit.host+':'+orbit.ring;if(!groups.has(ringKey))groups.set(ringKey,[]);
-      groups.get(ringKey).push({id:n.id,orbit,angle:((orbit.phase+clock.angle)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)});
+    for(const n of activePlanets){const orbit=this.orbits[n.id],speed=this.preferredPlanetSpeed(n.id,orbit);
+      // Keep accumulated angles, not old per-node speed offsets: equal-ring gaps stay fixed.
+      const clock=this.orbitClock(n.id,orbit,JSON.stringify([orbit.host,'planet:'+n.id,0]));
+      clock.omega=speed;orbit.preferredAngularVelocity=speed;speeds.set(n.id,speed);
     }
-    for(const group of groups.values())if(group.length>1){
-      group.sort((a,b)=>a.angle-b.angle||a.id.localeCompare(b.id));
-      // Propagate the forward neighbour's positive speed around the ring.
-      // Closing clearance shrinks continuously, so yielding starts before contact.
-      for(let pass=0;pass<group.length;pass++)for(let i=0;i<group.length;i++){
-        const follower=group[i],leader=group[(i+group.length-1)%group.length],radius=follower.orbit.targetRadius;
-    const minimum=this.bodyMinimum(this.nodeIndices.get(follower.id),this.nodeIndices.get(leader.id));
-        const angularGap=2*Math.asin(Math.min(1,minimum/(2*radius))),gap=(follower.angle-leader.angle+Math.PI*2)%(Math.PI*2),available=Math.max(0,gap-angularGap),maximum=speeds.get(leader.id)+available*.04;
-        speeds.set(follower.id,Math.min(speeds.get(follower.id),maximum));
-      }
-    }
-    for(const n of activePlanets){const o=this.orbits[n.id];this.orbitClock(n.id,o,JSON.stringify([o.host,'planet:'+n.id,0])).omega=speeds.get(n.id);}
     this.planetStepSpeeds=speeds;
   }
 

@@ -41,3 +41,7 @@ Only six reviewed frontend source modules (including the rebuilt graph bundle), 
 The public build and all 29 targeted navigation, source-deduplication, project, locale, template, sync and deletion checks passed. Isolated synthetic browser validation in the local implementation confirmed all four networks, backdrop dismissal, right-click return and unsaved inline draft retention. No private service was restarted for publication. This is a bounded allowlist and pattern review, not a complete security audit.
 
 Full-suite comparison against an isolated archive of public 0.7.0: baseline 351 tests / 339 pass / 12 fail; 0.7.1 356 tests / 344 pass / 12 fail. Failing test names match exactly, with no new failures. The twelve existing failures are retained as documented limitations, not claimed resolved.
+
+## 0.7.2 publication review — 2026-10-22
+
+The additional orbit-speed change includes only layout source, rebuilt graph, synthetic orbit tests and public version documentation. Eighteen targeted orbit/navigation/project checks passed. Full suite: 361 tests, 349 pass, 12 fail; failing names match the isolated 0.7.0 baseline exactly. Four network kinds have equal same-ring speeds and distinct different-ring speeds, including nested satellites. Tests retain continuous progress through metadata updates and existing clearance assertions. No new browser performance claim is made. Private backend and live analysis were left running.
